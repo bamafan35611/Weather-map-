@@ -1852,7 +1852,8 @@ document.addEventListener('visibilitychange', () => {
   }
 
   function pickBestVoice(voices, opts = {}) {
-    const force = opts.force || qp.get('voice');
+    const defaultAndrew = 'Microsoft Andrew Online (Natural) - English (United States)';
+const force = opts.force || qp.get('voice') || localStorage.getItem('mw_voice') || defaultAndrew;
     const locale = (opts.locale || 'en-US').toLowerCase();
     if (force) { const exact = voices.find(v => v.name === force); if (exact) return exact; }
     const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Google US English/i, /Google UK English/i, /Wavenet|Neural/i];
