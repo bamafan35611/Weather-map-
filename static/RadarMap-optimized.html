@@ -4,57 +4,9 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Mapbox Weather Intelligence – Enhanced Features</title>
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js">
-// === Performance: single scheduler tick ===
-function startScheduler() {
-    let t = 0;
-    setInterval(() => {
-        t++;
-        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
-        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
-        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
-        try { updateBriefingCountdown(); } catch(e){}
-        try { updateAlertCheckCountdown(); } catch(e){}
-    }, 1000);
-}
-
-
-// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
-    } else {
-        startWarningBlink();
-    }
-});
-
-</script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js">
-// === Performance: single scheduler tick ===
-function startScheduler() {
-    let t = 0;
-    setInterval(() => {
-        t++;
-        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
-        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
-        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
-        try { updateBriefingCountdown(); } catch(e){}
-        try { updateAlertCheckCountdown(); } catch(e){}
-    }, 1000);
-}
-
-
-// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
-    } else {
-        startWarningBlink();
-    }
-});
-
-</script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
 <style>
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -267,6 +219,23 @@ header {
 </div>
 
 <script>
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
+
+// --- Render-aware backend base URL ---
+const BACKEND_BASE_URL = (() => {
+  const qs = new URLSearchParams(location.search);
+  const override = qs.get("api") || localStorage.getItem("mw_api_base");
+  if (override) return override; // manual override wins
+
+  if (location.hostname.endsWith("onrender.com")) return "";
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
+    return "http://127.0.0.1:8000";
+  }
+  return "";
+})();
+
+
 function getAlertTitle(alert) {
     if (!alert || !alert.properties) return "Weather Alert";
     if (alert.properties.event) {
@@ -281,23 +250,7 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n // --- Render-aware backend base URL --- const BACKEND_BASE_URL = (() => {   const qs = new URLSearchParams(location.search);");
-  const override = qs.get("api") || localStorage.getItem("mw_api_base");
-  if (override) return override; // manual override wins
-
-  // If hosted on Render (same-origin), use relative paths
-  if (location.hostname.endsWith("onrender.com")) return "";
-
-  // Local dev: prefer same-origin if a port is present, else fallback to 8000
-  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
-    return "http://127.0.0.1:8000";
-  }
-
-  // Default: same-origin (relative) to avoid mixed content
-  return "";
-})();
-");
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
 // === Performance: toggle logs ===
 const DEBUG_LOGS = false;
@@ -305,7 +258,6 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = 'http://localhost:5000';
 
 let map;
 let speechEnabled = false;
