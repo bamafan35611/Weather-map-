@@ -53,15 +53,91 @@ def api_alerts():
     # You can merge NWS + custom alerts here
     return jsonify({'alerts': []})
 
+
 @app.get('/api/outlooks')
 def api_outlooks():
-    # ✅ Add a simple example polygon so the layer displays
-    return jsonify({
-        'outlooks': [{
-            'type': 'convective',
-            'risk_level': 'SLGT',
-            'probability': '15%',
-            'description': 'Test slight risk (demo polygon)',
+    \"\"\"Return current SPC convective outlook polygons (categorical) as simple JSON
+    the front-end already understands. No fake/demo boxes.\"\"\"
+    import os, requests
+
+    # Choose outlook day (1, 2, or 3). Default Day 1.
+    day = int(os.environ.get("SPC_OUTLOOK_DAY", "1"))
+    if day not in (1, 2, 3):
+        day = 1
+
+    # Map day -> categorical layer id on NOAA MapServer
+    layer_ids = {1: 1, 2: 9, 3: 17}
+    layer_id = layer_ids[day]
+
+    base_url = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer"
+    # Request only a few attributes; geometry comes as GeoJSON
+    url = f"{base_url}/{layer_id}/query"
+    params = {
+        "where": "1=1",
+        "outFields": "label,dn,valid,expire",
+        "f": "geojson",
+        "returnGeometry": "true"
+    }
+
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        gj = r.json()
+    except Exception as e:
+        # Fallback to empty on error
+        return jsonify({"outlooks": [], "error": str(e)}), 200
+
+    # Map SPC categorical 'label' to your risk codes used by the front-end palette
+    # label examples: Thunderstorm, Marginal, Slight, Enhanced, Moderate, High
+    def map_label_to_code(label: str) -> str:
+        lab = (label or "").strip().upper()
+        if lab.startswith("THUNDER"):
+            return "MRGL"
+        if lab.startswith("MARGINAL"):
+            return "MRGL"
+        if lab.startswith("SLIGHT"):
+            return "SLGT"
+        if lab.startswith("ENHANCED"):
+            return "ENH"
+        if lab.startswith("MODERATE"):
+            return "MDT"
+        if lab.startswith("HIGH"):
+            return "HIGH"
+        return "MRGL"
+
+    out = []
+    for feat in gj.get("features", []):
+        props = feat.get("properties", {})
+        label = props.get("label") or ""
+        risk_code = map_label_to_code(label)
+
+        geom = feat.get("geometry") or {}
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
+
+        # Normalize to a single polygon ring list for the existing front-end
+        rings = None
+        if gtype == "Polygon":
+            if isinstance(coords, list) and coords:
+                rings = coords[0]
+        elif gtype == "MultiPolygon":
+            if isinstance(coords, list) and coords and isinstance(coords[0], list) and coords[0]:
+                rings = coords[0][0]
+
+        if not rings or len(rings) < 3:
+            continue
+
+        out.append({
+            "type": "convective",
+            "risk_level": risk_code,
+            "probability": "",
+            "description": props.get("label") or "",
+            "day": day,
+            "polygon": rings
+        })
+
+    return jsonify({"outlooks": out})
+',
             'day': 1,
             'polygon': [
                 [-87.0, 34.6], [-86.6, 34.6],
