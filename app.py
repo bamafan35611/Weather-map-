@@ -53,7 +53,6 @@ def api_alerts():
     # You can merge NWS + custom alerts here
     return jsonify({'alerts': []})
 
-
 @app.get('/api/outlooks')
 def api_outlooks():
     """Return current SPC convective outlook polygons (categorical) as simple JSON
@@ -122,16 +121,6 @@ def api_outlooks():
         })
 
     return jsonify({"outlooks": out})
-',
-            'day': 1,
-            'polygon': [
-                [-87.0, 34.6], [-86.6, 34.6],
-                [-86.6, 34.9], [-87.0, 34.9],
-                [-87.0, 34.6]
-            ]
-        }]
-    })
-
 @app.get('/api/learning/history')
 def api_history():
     return jsonify({'count': 0, 'history': []})
