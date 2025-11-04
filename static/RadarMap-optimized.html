@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
-<head>\n<link rel="icon" href="data:;base64,iVBORw0KGgo=">
+<head>
+<link rel="icon" href="data:;base64,iVBORw0KGgo=">
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Mapbox Weather Intelligence – Enhanced Features</title>
@@ -281,24 +282,7 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n// --- Dynamic backend URL auto-detect (prefers same-origin; falls back to :8000 locally) ---
-const BACKEND_BASE_URL = (() => {
-  // Allow manual override via ?api= and localStorage
-  const qs = new URLSearchParams(location.search);
-  const override = qs.get("api") || localStorage.getItem("mw_api_base");
-  if (override) return override;
-
-  // If running on localhost with a specific port, try matching the backend on that port first
-  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    const current = location.origin;
-    const m = current.match(/^https?:\/\/[^:]+:(\d+)/);
-    const port = m ? m[1] : null;
-    if (port) return current; // same-origin backend
-    return "http://127.0.0.1:8000"; // fallback to Flask default
-  }
-  // Deployed case: use same-origin
-  return location.origin;
-})();");
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
 // === Performance: toggle logs ===
 const DEBUG_LOGS = false;
@@ -306,7 +290,22 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = 'http://localhost:5000';
+
+// --- Dynamic backend URL auto-detect (clean) ---
+const BACKEND_BASE_URL = (() => {
+  // manual override
+  const qs = new URLSearchParams(location.search);
+  const override = qs.get("api") || localStorage.getItem("mw_api_base");
+  if (override) return override;
+  // localhost: prefer same-origin; else fallback to 8000
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
+    return "http://127.0.0.1:8000";
+  }
+  // deployed: same-origin
+  return location.origin;
+})();
+
 
 let map;
 let speechEnabled = false;
