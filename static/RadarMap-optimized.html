@@ -4,9 +4,57 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Mapbox Weather Intelligence – Enhanced Features</title>
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js">
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
+</script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js">
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
+</script>
 
 <style>
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -219,25 +267,6 @@ header {
 </div>
 
 <script>
-// --- Backend base URL (Render-aware) ---
-const BACKEND_BASE_URL = (() => {
-  const qs = new URLSearchParams(location.search);
-  const override = qs.get("api") || localStorage.getItem("mw_api_base");
-  if (override) return override; // manual override
-
-  // On Render, use same-origin
-  if (location.hostname.endsWith("onrender.com")) return "";
-
-  // Local dev: keep same-origin if page has a port; else fallback to 8000
-  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
-    return "http://127.0.0.1:8000";
-  }
-
-  // Default: same-origin
-  return "";
-})();
-
 function getAlertTitle(alert) {
     if (!alert || !alert.properties) return "Weather Alert";
     if (alert.properties.event) {
@@ -252,14 +281,34 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n
+// --- Render-aware backend base URL ---
+const BACKEND_BASE_URL = (() => {
+  const qs = new URLSearchParams(location.search);
+  const override = qs.get("api") || localStorage.getItem("mw_api_base");
+  if (override) return override; // manual override wins
+
+  // If hosted on Render (same-origin), use relative paths
+  if (location.hostname.endsWith("onrender.com")) return "";
+
+  // Local dev: prefer same-origin if a port is present, else fallback to 8000
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
+    return "http://127.0.0.1:8000";
+  }
+
+  // Default: same-origin (relative) to avoid mixed content
+  return "";
+})();
+");
+
 // === Performance: toggle logs ===
 const DEBUG_LOGS = false;
 if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-
+const BACKEND_BASE_URL = 'http://localhost:5000';
 
 let map;
 let speechEnabled = false;
@@ -1805,5 +1854,78 @@ document.addEventListener('visibilitychange', () => {
 
 </script>
 
+<script>
+
+// === Robust live countdowns for "Next" and "Alert Check" ===
+(function () {
+  if (window.__mw_countdown_started) return;
+  window.__mw_countdown_started = true;
+
+  // Utility: find element by candidate IDs, else by text prefix
+  function findByIdsOrText(candidates, textPrefix) {
+    for (const id of candidates) {
+      const el = document.getElementById(id);
+      if (el) return el;
+    }
+    // Fallback: find any element whose text starts with the prefix
+    const all = document.querySelectorAll('body *:not(script):not(style)');
+    for (const el of all) {
+      const t = (el.textContent || '').trim();
+      if (t.startsWith(textPrefix)) return el;
+    }
+    return null;
+  }
+
+  // Choose elements
+  const nextEl  = findByIdsOrText(['nextTimer', 'next-briefing', 'next_briefing'], 'Next:');
+  const alertEl = findByIdsOrText(['alertTimer', 'next-alert-check', 'alert_check'], 'Alert Check:');
+
+  // If neither exists, do nothing
+  if (!nextEl && !alertEl) {
+    console.warn('[Countdown] No matching elements found for Next / Alert Check');
+    return;
+  }
+
+  // State (seconds)
+  let nextSecs  = 60 * 60;
+  let alertSecs = 15 * 60;
+
+  // Format mm:ss
+  const fmt = (secs) => {
+    const m = String(Math.floor(secs / 60)).padStart(2, '0');
+    const s = String(secs % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  // Initial paint
+  if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
+  if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
+
+  // Single global interval
+  window.__mw_countdown_interval = window.setInterval(() => {
+    if (nextSecs > 0) nextSecs--;
+    if (alertSecs > 0) alertSecs--;
+
+    if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
+    if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
+
+    if (nextSecs === 0) {
+      nextSecs = 60 * 60; // reset
+      if (typeof speakHourlyBriefing === 'function') {
+        try { speakHourlyBriefing(); } catch (e) { console.warn('speakHourlyBriefing error', e); }
+      }
+    }
+    if (alertSecs === 0) {
+      alertSecs = 15 * 60; // reset
+      if (typeof performPeriodicAlertCheck === 'function') {
+        try { performPeriodicAlertCheck(); } catch (e) { console.warn('performPeriodicAlertCheck error', e); }
+      } else if (typeof checkAlerts === 'function') {
+        try { checkAlerts(); } catch (e) { console.warn('checkAlerts error', e); }
+      }
+    }
+  }, 1000);
+})();
+
+</script>
 </body>
 </html>
