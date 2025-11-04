@@ -281,10 +281,7 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n
-// --- Render-aware backend base URL ---
-const BACKEND_BASE_URL = (() => {
-  const qs = new URLSearchParams(location.search);
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n // --- Render-aware backend base URL --- const BACKEND_BASE_URL = (() => {   const qs = new URLSearchParams(location.search);");
   const override = qs.get("api") || localStorage.getItem("mw_api_base");
   if (override) return override; // manual override wins
 
@@ -1854,78 +1851,5 @@ document.addEventListener('visibilitychange', () => {
 
 </script>
 
-<script>
-
-// === Robust live countdowns for "Next" and "Alert Check" ===
-(function () {
-  if (window.__mw_countdown_started) return;
-  window.__mw_countdown_started = true;
-
-  // Utility: find element by candidate IDs, else by text prefix
-  function findByIdsOrText(candidates, textPrefix) {
-    for (const id of candidates) {
-      const el = document.getElementById(id);
-      if (el) return el;
-    }
-    // Fallback: find any element whose text starts with the prefix
-    const all = document.querySelectorAll('body *:not(script):not(style)');
-    for (const el of all) {
-      const t = (el.textContent || '').trim();
-      if (t.startsWith(textPrefix)) return el;
-    }
-    return null;
-  }
-
-  // Choose elements
-  const nextEl  = findByIdsOrText(['nextTimer', 'next-briefing', 'next_briefing'], 'Next:');
-  const alertEl = findByIdsOrText(['alertTimer', 'next-alert-check', 'alert_check'], 'Alert Check:');
-
-  // If neither exists, do nothing
-  if (!nextEl && !alertEl) {
-    console.warn('[Countdown] No matching elements found for Next / Alert Check');
-    return;
-  }
-
-  // State (seconds)
-  let nextSecs  = 60 * 60;
-  let alertSecs = 15 * 60;
-
-  // Format mm:ss
-  const fmt = (secs) => {
-    const m = String(Math.floor(secs / 60)).padStart(2, '0');
-    const s = String(secs % 60).padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  // Initial paint
-  if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
-  if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
-
-  // Single global interval
-  window.__mw_countdown_interval = window.setInterval(() => {
-    if (nextSecs > 0) nextSecs--;
-    if (alertSecs > 0) alertSecs--;
-
-    if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
-    if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
-
-    if (nextSecs === 0) {
-      nextSecs = 60 * 60; // reset
-      if (typeof speakHourlyBriefing === 'function') {
-        try { speakHourlyBriefing(); } catch (e) { console.warn('speakHourlyBriefing error', e); }
-      }
-    }
-    if (alertSecs === 0) {
-      alertSecs = 15 * 60; // reset
-      if (typeof performPeriodicAlertCheck === 'function') {
-        try { performPeriodicAlertCheck(); } catch (e) { console.warn('performPeriodicAlertCheck error', e); }
-      } else if (typeof checkAlerts === 'function') {
-        try { checkAlerts(); } catch (e) { console.warn('checkAlerts error', e); }
-      }
-    }
-  }, 1000);
-})();
-
-</script>
 </body>
 </html>
