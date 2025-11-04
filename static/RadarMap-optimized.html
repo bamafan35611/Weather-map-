@@ -1,30 +1,60 @@
 <!DOCTYPE html>
 <html>
 <head>
-
-<!-- === Same-origin backend patch (defensive) === -->
-<script>
-(() => {
-  const ORIG_FETCH = window.fetch;
-  const BASE = ''; // same-origin
-  window.fetch = (input, init) => {
-    let url = typeof input === 'string' ? input : input.url;
-    url = url.replace(/^https?:\/\/localhost:5000/, '');
-    url = url.replace(/^http:\/\//, 'https://');
-    if (url.startsWith('/')) url = BASE + url;
-    return ORIG_FETCH(url, init);
-  };
-  // expose in case other code reads it
-  window.BACKEND_BASE_URL = BASE;
-})();
-</script>
-
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Mapbox Weather Intelligence – Enhanced Features</title>
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js">
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
+</script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js">
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
+</script>
 
 <style>
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -184,6 +214,8 @@ header {
 <strong>Mapbox Weather Intelligence - Enhanced</strong>
 <div style="margin-left:auto">Blinking Alerts • Zoom Counties • Browser TTS</div>
 </header>
+<div class="connection-status" id="connection-status">Backend: Connecting...</div>
+
 <div id="map"></div>
 <div id="radar-timestamp">Radar: Initializing...</div>
 <div class="status-panel" id="status-panel">
@@ -251,8 +283,13 @@ function getAlertTitle(alert) {
 
 console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
+// === Performance: toggle logs ===
+const DEBUG_LOGS = false;
+if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
+
+
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = '';
+const BACKEND_BASE_URL = 'http://localhost:5000';
 
 let map;
 let speechEnabled = false;
@@ -278,6 +315,25 @@ function updateActiveWarnings(alerts) {
     console.log(`[Repeat] Tracking ${activeWarnings.length} active warnings for 15-min re-announcement.`);
 }
 
+
+// === Performance: cache bbox per alert ===
+const alertBBoxCache = new Map(); // key -> [minX, minY, maxX, maxY]
+function getAlertBBox(featureOrWrapper) {
+    try {
+        // Accept either the alert feature itself or a {type:'FeatureCollection', features:[alert]} wrapper
+        let feature = featureOrWrapper;
+        if (featureOrWrapper && featureOrWrapper.type === 'FeatureCollection' && Array.isArray(featureOrWrapper.features) && featureOrWrapper.features.length) {
+            feature = featureOrWrapper.features[0];
+        }
+        const key = feature?.properties?.id || feature?.id || JSON.stringify(feature?.geometry || featureOrWrapper);
+        if (alertBBoxCache.has(key)) return alertBBoxCache.get(key);
+        const bbox = turf.bbox({ type: 'FeatureCollection', features: [feature] });
+        alertBBoxCache.set(key, bbox);
+        return bbox;
+    } catch (e) {
+        return [0,0,0,0];
+    }
+}
 async function performPeriodicAlertCheck() {
     console.log(`[15min Check] Starting periodic warning check...`);
     console.log(`[15min Check] Active warnings count: ${activeWarnings.length}`);
@@ -307,7 +363,7 @@ async function performPeriodicAlertCheck() {
                 type: 'FeatureCollection',
                 features: [alert]
             };
-            const alertBounds = turf.bbox(alertFeature);
+            const alertBounds = getAlertBBox(alertFeature);
             const alertCenter = {
                 lng: (alertBounds[0] + alertBounds[2]) / 2,
                 lat: (alertBounds[1] + alertBounds[3]) / 2
@@ -341,7 +397,7 @@ async function performPeriodicAlertCheck() {
                 type: 'FeatureCollection',
                 features: [alert]
             };
-            const bounds = turf.bbox(alertFeature);
+            const bounds = getAlertBBox(alertFeature);
             
             console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
             
@@ -471,7 +527,7 @@ async function speakText(text, priority = 'normal') {
     
     return new Promise((resolve) => {
         if ('speechSynthesis' in window) {
-            speechSynthesis.cancel();
+            if (speechSynthesis.speaking && priority === 'alert') { speechSynthesis.cancel(); }
             
             const utterance = new SpeechSynthesisUtterance(cleanText);
             utterance.rate = 0.95;
@@ -554,6 +610,7 @@ function initializeMap() {
         addStateBorders();
         addRadarLayer();
         setupCountyVisibility();
+        initAlertsLayers();
         fetchAlerts();
         
         console.log("Enhanced weather system ready!");
@@ -692,7 +749,7 @@ async function handleNewAlerts(newAlerts) {
                 type: 'FeatureCollection',
                 features: [alert]
             };
-            const bounds = turf.bbox(alertFeature);
+            const bounds = getAlertBBox(alertFeature);
             
             console.log(`Processing alert ${i+1}/${newAlerts.length}: ${getAlertTitle(alert)}`);
             
@@ -866,7 +923,7 @@ async function fetchAlerts() {
                             type: 'FeatureCollection',
                             features: [alert]
                         };
-                        const alertBounds = turf.bbox(alertFeature);
+                        const alertBounds = getAlertBBox(alertFeature);
                         const alertCenter = {
                             lng: (alertBounds[0] + alertBounds[2]) / 2,
                             lat: (alertBounds[1] + alertBounds[3]) / 2
@@ -909,76 +966,79 @@ document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.
     }
 }
 
+
+// === Performance: initialize alert layers once ===
+function initAlertsLayers() {
+    if (map.getSource('alerts')) return;
+    map.addSource('alerts', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+    });
+    if (!map.getLayer('alert-fills')) {
+        map.addLayer({
+            id: 'alert-fills',
+            type: 'fill',
+            source: 'alerts',
+            paint: {
+                'fill-color': ['get', 'color'],
+                'fill-opacity': 0.3
+            }
+        });
+    }
+    if (!map.getLayer('alert-borders')) {
+        map.addLayer({
+            id: 'alert-borders',
+            type: 'line',
+            source: 'alerts',
+            paint: {
+                'line-color': ['get', 'color'],
+                'line-width': [
+                    'case',
+                    ['==', ['get', 'priority'], 'HIGH'], 4,
+                    ['==', ['get', 'isWarning'], true], 3,
+                    2
+                ],
+                'line-opacity': 0.8
+            }
+        });
+    }
+    if (!map.getLayer('warning-pulse')) {
+        map.addLayer({
+            id: 'warning-pulse',
+            type: 'line',
+            source: 'alerts',
+            filter: ['==', ['get', 'isWarning'], true],
+            paint: {
+                'line-color': ['get', 'color'],
+                'line-width': 6,
+                'line-opacity': 0.8
+            }
+        });
+    }
+}
 function addAlertsToMap(alerts) {
-    if (map.getLayer('alert-fills')) map.removeLayer('alert-fills');
-    if (map.getLayer('alert-borders')) map.removeLayer('alert-borders');
-    if (map.getLayer('warning-pulse')) map.removeLayer('warning-pulse');
-    if (map.getSource('alerts')) map.removeSource('alerts');
-    
     const alertsGeoJSON = {
         type: 'FeatureCollection',
         features: alerts
     };
-    
-    map.addSource('alerts', {
-        type: 'geojson',
-        data: alertsGeoJSON
-    });
-    
-    map.addLayer({
-        id: 'alert-fills',
-        type: 'fill',
-        source: 'alerts',
-        paint: {
-            'fill-color': ['get', 'color'],
-            'fill-opacity': 0.3
-        }
-    });
-    
-    map.addLayer({
-        id: 'alert-borders',
-        type: 'line',
-        source: 'alerts',
-        paint: {
-            'line-color': ['get', 'color'],
-            'line-width': [
-                'case',
-                ['==', ['get', 'priority'], 'HIGH'], 4,
-                ['==', ['get', 'isWarning'], true], 3,
-                2
-            ],
-            'line-opacity': 0.8
-        }
-    });
-    
-    map.addLayer({
-        id: 'warning-pulse',
-        type: 'line',
-        source: 'alerts',
-        filter: ['==', ['get', 'isWarning'], true],
-        paint: {
-            'line-color': ['get', 'color'],
-            'line-width': 6,
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 15, 0.6]
-        }
-    });
-    
-    animateWarnings();
-    
-    map.on('click', 'alert-fills', (e) => {
-        const alert = e.features[0].properties;
-        showAlertPopup(e, alert);
-    });
-    
-    map.on('mouseenter', 'alert-fills', () => {
-        map.getCanvas().style.cursor = 'pointer';
-    });
-    
-    map.on('mouseleave', 'alert-fills', () => {
-        map.getCanvas().style.cursor = '';
-    });
-    
-    console.log(`Added ${alerts.length} alerts to map`);
+    if (map.getSource('alerts')) {
+        map.getSource('alerts').setData(alertsGeoJSON);
+    } else {
+        map.addSource('alerts', { type: 'geojson', data: alertsGeoJSON });
+    }
+    // Keep interactions as before
+    if (!map._alertClickBound) {
+        map.on('click', 'alert-fills', (e) => {
+            const alert = e.features[0].properties;
+            showAlertPopup(e, alert);
+        });
+        map.on('mouseenter', 'alert-fills', () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', 'alert-fills', () => { map.getCanvas().style.cursor = ''; });
+        map._alertClickBound = true;
+    }
+    // Start blinking only when we actually have warnings
+    startWarningBlink();
+    console.log(`Updated ${alerts.length} alerts on map (setData)`);
 }
 async function fetchOutlooks() {
     try {
@@ -1100,21 +1160,18 @@ function showOutlookPopup(e, outlook) {
     mapContainer.appendChild(popup);
     setTimeout(() => {const clickOutsideHandler = (event) => {if (!popup.contains(event.target)) {popup.remove();document.removeEventListener('click', clickOutsideHandler);}};document.addEventListener('click', clickOutsideHandler);}, 100);
 }
-function animateWarnings() {
+function startWarningBlink() {
+    if (!map || !map.getLayer('warning-pulse')) return;
+    if (window._warningBlinkTimer) return;
     let isVisible = true;
-    
-    function blink() {
-        const opacity = isVisible ? 0.9 : 0.1;
-        
-        if (map.getLayer('warning-pulse')) {
+    window._warningBlinkTimer = setInterval(() => {
+        try {
+            if (!map.getLayer('warning-pulse') || (Array.isArray(activeWarnings) && activeWarnings.length === 0)) return;
+            const opacity = isVisible ? 0.9 : 0.2;
             map.setPaintProperty('warning-pulse', 'line-opacity', opacity);
-        }
-        
-        isVisible = !isVisible;
-        setTimeout(blink, 800);
-    }
-    
-    blink();
+            isVisible = !isVisible;
+        } catch (e) {}
+    }, 1600);
 }
 
 function showAlertPopup(e, alert) {
@@ -1622,6 +1679,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     updateWeatherDisplay();
+
+    startScheduler();
 });
     
 document.getElementById('analytics-button').addEventListener('click', displayAnalytics);
@@ -1641,9 +1700,9 @@ document.getElementById('test-button').addEventListener('click', async () => {
         }
     });
 
-    setInterval(fetchAlerts, 15000);
-    setInterval(fetchOutlooks, 300000);
-    setInterval(updateWeatherDisplay, 5000);
+    // setInterval(fetchAlerts, 15000); // moved to scheduler
+    // setInterval(fetchOutlooks, 300000); // moved to scheduler
+    // setInterval(updateWeatherDisplay, 5000); // moved to scheduler
     
     let briefingCountdown = 3600;
   
@@ -1666,7 +1725,7 @@ document.getElementById('test-button').addEventListener('click', async () => {
     }
     
     updateBriefingCountdown();
-    setInterval(updateBriefingCountdown, 1000);
+    // setInterval(updateBriefingCountdown, 1000); // moved to scheduler
     
     let alertCheckCountdown = 900;
     
@@ -1689,7 +1748,7 @@ document.getElementById('test-button').addEventListener('click', async () => {
     }
     
     updateAlertCheckCountdown();
-    setInterval(updateAlertCheckCountdown, 1000);
+    // setInterval(updateAlertCheckCountdown, 1000); // moved to scheduler
     
     console.log("Enhanced Mapbox Weather System ready - Speech synchronization FIXED + 15-min WARNING checks enabled!");
 });
@@ -1705,12 +1764,36 @@ console.log("✅ 15-minute periodic WARNING re-zoom enabled");
 console.log("✅ Zooms to most severe active WARNING every 15 min");
 console.log("✅ Voice reminder on re-zoom (if voice enabled)");
 console.log("=".repeat(60));
+
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
 </script>
 
 <script>
 async function classifyAlert(alert) {
     try {
-        const response = await fetch("/api/ml/severe", {
+        const response = await fetch("http://localhost:5000/api/ml/severe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1726,6 +1809,30 @@ async function classifyAlert(alert) {
         return { severe: false, probability: 0.0 };
     }
 }
+
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
 </script>
 
 </body>
