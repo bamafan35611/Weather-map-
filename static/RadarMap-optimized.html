@@ -281,26 +281,7 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n
-// --- Render-aware backend base URL ---
-const BACKEND_BASE_URL = (() => {
-  const qs = new URLSearchParams(location.search);
-  const override = qs.get("api") || localStorage.getItem("mw_api_base");
-  if (override) return override; // manual override wins
-
-  // If hosted on Render (same-origin), use relative paths
-  if (location.hostname.endsWith("onrender.com")) return "";
-
-  // Local dev: prefer same-origin if a port is present, else fallback to 8000
-  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
-    return "http://127.0.0.1:8000";
-  }
-
-  // Default: same-origin (relative) to avoid mixed content
-  return "";
-})();
-");
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
 // === Performance: toggle logs ===
 const DEBUG_LOGS = false;
@@ -308,7 +289,7 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = 'http://localhost:5000';
+const BACKEND_BASE_URL = '';
 
 let map;
 let speechEnabled = false;
@@ -1855,11 +1836,9 @@ document.addEventListener('visibilitychange', () => {
 </script>
 
 
-<!-- Natural Voice Patch: auto-pick best browser TTS voice (Edge/Chrome/Render) -->
 <script>
 (function () {
   if (!('speechSynthesis' in window)) return;
-
   let voicesCache = null;
   const qp = new URLSearchParams(location.search);
 
@@ -1868,80 +1847,96 @@ document.addEventListener('visibilitychange', () => {
     if (have && have.length) return Promise.resolve(have);
     return new Promise((resolve) => {
       const to = setTimeout(() => resolve(window.speechSynthesis.getVoices()), timeoutMs);
-      window.speechSynthesis.onvoiceschanged = () => {
-        clearTimeout(to);
-        resolve(window.speechSynthesis.getVoices());
-      };
+      window.speechSynthesis.onvoiceschanged = () => { clearTimeout(to); resolve(window.speechSynthesis.getVoices()); };
     });
   }
 
   function pickBestVoice(voices, opts = {}) {
     const force = opts.force || qp.get('voice');
     const locale = (opts.locale || 'en-US').toLowerCase();
-
-    if (force) {
-      const exact = voices.find(v => v.name === force);
-      if (exact) return exact;
-    }
-
-    const patterns = [
-      /Microsoft .* Online \(Natural\)/i,
-      /Microsoft .* Neural/i,
-      /Google US English/i,
-      /Google UK English/i,
-      /Wavenet|Neural/i,
-    ];
-
-    const localeVoices = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
-    for (const pat of patterns) {
-      const v = localeVoices.find(v => pat.test(v.name)) || voices.find(v => pat.test(v.name));
-      if (v) return v;
-    }
-    return localeVoices[0] || voices[0] || null;
+    if (force) { const exact = voices.find(v => v.name === force); if (exact) return exact; }
+    const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Google US English/i, /Google UK English/i, /Wavenet|Neural/i];
+    const loc = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
+    for (const p of pats) { const v = loc.find(v => p.test(v.name)) || voices.find(v => p.test(v.name)); if (v) return v; }
+    return loc[0] || voices[0] || null;
   }
 
-  async function ensureVoiceOnUtterance(u) {
+  async function ensureVoice(u) {
     try {
       const voices = voicesCache || (voicesCache = await waitForVoices());
-      if (!u.voice) {
-        u.voice = pickBestVoice(voices, { locale: u.lang || 'en-US' });
-      }
+      if (!u.voice) u.voice = pickBestVoice(voices, { locale: u.lang || 'en-US' });
       if (!u.lang && u.voice && u.voice.lang) u.lang = u.voice.lang;
-      if (typeof u.rate !== 'number' || !u.rate)  u.rate = 1.0;
-      if (typeof u.pitch !== 'number' || !u.pitch) u.pitch = 1.0;
-      if (typeof u.volume !== 'number' || !u.volume) u.volume = 1.0;
-    } catch (e) {
-      console.warn('[voice shim] ensureVoiceOnUtterance failed', e);
-    }
+      if (!u.rate) u.rate = 1.0; if (!u.pitch) u.pitch = 1.0; if (!u.volume) u.volume = 1.0;
+    } catch (e) { console.warn('[voice shim] ensureVoice failed', e); }
   }
 
   window.speak = async function (text, opts = {}) {
     const u = new SpeechSynthesisUtterance(String(text ?? ''));
-    if (opts.lang)   u.lang = opts.lang;
-    if (opts.rate)   u.rate = opts.rate;
-    if (opts.pitch)  u.pitch = opts.pitch;
-    if (opts.volume) u.volume = opts.volume;
-    await ensureVoiceOnUtterance(u);
+    if (opts.lang) u.lang = opts.lang; if (opts.rate) u.rate = opts.rate; if (opts.pitch) u.pitch = opts.pitch; if (opts.volume) u.volume = opts.volume;
+    await ensureVoice(u);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
   };
 
   const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
   window.speechSynthesis.speak = function (u) {
-    if (typeof u === 'string') {
-      u = new SpeechSynthesisUtterance(u);
-    }
-    if (!voicesCache || !u.voice) {
-      (async () => {
-        await ensureVoiceOnUtterance(u);
-        _origSpeak(u);
-      })();
-      return;
-    }
+    if (typeof u === 'string') u = new SpeechSynthesisUtterance(u);
+    if (!voicesCache || !u.voice) { (async () => { await ensureVoice(u); _origSpeak(u); })(); return; }
     _origSpeak(u);
   };
 
   console.log('[voice shim] natural voice selection active');
+})();
+</script>
+
+
+<script>
+// === Robust live countdowns for "Next" and "Alert Check" ===
+(function () {
+  if (window.__mw_countdown_started) return;
+  window.__mw_countdown_started = true;
+
+  function findByIdsOrText(candidates, textPrefix) {
+    for (const id of candidates) { const el = document.getElementById(id); if (el) return el; }
+    const all = document.querySelectorAll('body *:not(script):not(style)');
+    for (const el of all) { const t = (el.textContent || '').trim(); if (t.startsWith(textPrefix)) return el; }
+    return null;
+  }
+
+  const nextEl  = findByIdsOrText(['nextTimer','next-briefing','next_briefing'], 'Next:');
+  const alertEl = findByIdsOrText(['alertTimer','next-alert-check','alert_check'], 'Alert Check:');
+
+  if (!nextEl && !alertEl) return;
+
+  let nextSecs  = 60 * 60;
+  let alertSecs = 15 * 60;
+
+  const fmt = (secs) => {
+    const m = String(Math.floor(secs / 60)).padStart(2, '0');
+    const s = String(secs % 60).padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
+  if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
+
+  window.__mw_countdown_interval = window.setInterval(() => {
+    if (nextSecs > 0) nextSecs--;
+    if (alertSecs > 0) alertSecs--;
+
+    if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
+    if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
+
+    if (nextSecs === 0) {
+      nextSecs = 60 * 60;
+      if (typeof speakHourlyBriefing === 'function') { try { speakHourlyBriefing(); } catch (e) {} }
+    }
+    if (alertSecs === 0) {
+      alertSecs = 15 * 60;
+      if (typeof performPeriodicAlertCheck === 'function') { try { performPeriodicAlertCheck(); } catch (e) {} }
+      else if (typeof checkAlerts === 'function') { try { checkAlerts(); } catch (e) {} }
+    }
+  }, 1000);
 })();
 </script>
 
