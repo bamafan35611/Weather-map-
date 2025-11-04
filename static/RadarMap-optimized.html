@@ -281,26 +281,7 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n
-// --- Render-aware backend base URL ---
-const BACKEND_BASE_URL = (() => {
-  const qs = new URLSearchParams(location.search);
-  const override = qs.get("api") || localStorage.getItem("mw_api_base");
-  if (override) return override; // manual override wins
-
-  // If hosted on Render (same-origin), use relative paths
-  if (location.hostname.endsWith("onrender.com")) return "";
-
-  // Local dev: prefer same-origin if a port is present, else fallback to 8000
-  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
-    return "http://127.0.0.1:8000";
-  }
-
-  // Default: same-origin (relative) to avoid mixed content
-  return "";
-})();
-");
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
 // === Performance: toggle logs ===
 const DEBUG_LOGS = false;
@@ -308,7 +289,7 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = 'http://localhost:5000';
+const BACKEND_BASE_URL = '';
 
 let map;
 let speechEnabled = false;
@@ -1852,7 +1833,42 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-</script>
 
-</body>
+
+// --- Live countdown for Next and Alert Check ---
+(function startCountdowns() {
+  let nextSecs = 60 * 60;    // 60 minutes
+  let alertSecs = 15 * 60;   // 15 minutes
+
+  function fmt(secs) {
+    const m = String(Math.floor(secs / 60)).padStart(2, "0");
+    const s = String(secs % 60).padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  const nextEl = document.getElementById("nextTimer");
+  const alertEl = document.getElementById("alertTimer");
+
+  if (nextEl) nextEl.textContent = `Next: ${fmt(nextSecs)}`;
+  if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
+
+  setInterval(() => {
+    if (nextSecs > 0) nextSecs--;
+    if (alertSecs > 0) alertSecs--;
+
+    if (nextEl) nextEl.textContent = `Next: ${fmt(nextSecs)}`;
+    if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
+
+    if (nextSecs === 0) {
+      nextSecs = 60 * 60;         // reset
+      if (typeof checkAlerts === "function") checkAlerts();
+    }
+    if (alertSecs === 0) {
+      alertSecs = 15 * 60;        // reset
+      if (typeof checkAlerts === "function") checkAlerts();
+    }
+  }, 1000);
+})();
+
+</script></body>
 </html>
