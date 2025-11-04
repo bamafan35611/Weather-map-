@@ -1851,12 +1851,48 @@ document.addEventListener('visibilitychange', () => {
     });
   }
 
+  
   function pickBestVoice(voices, opts = {}) {
-    const defaultAndrew = 'Microsoft Andrew Online (Natural) - English (United States)';
-const force = opts.force || qp.get('voice') || localStorage.getItem('mw_voice') || defaultAndrew;
+    const qp = new URLSearchParams(location.search);
+    const force = opts.force || qp.get('voice') || localStorage.getItem('mw_voice');
+
+    // 1) Honor explicit choice
+    if (force) {
+      const exact = voices.find(v => v.name === force);
+      if (exact) return exact;
+    }
+
     const locale = (opts.locale || 'en-US').toLowerCase();
-    if (force) { const exact = voices.find(v => v.name === force); if (exact) return exact; }
-    const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Google US English/i, /Google UK English/i, /Wavenet|Neural/i];
+    const byLocale = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
+
+    // 2) Preferred male voices by name (Render-agnostic: depends on browser)
+    const preferredNames = [
+      // Microsoft Edge Online (Natural) male voices
+      'Microsoft Andrew Online (Natural) - English (United States)',
+      'Microsoft Guy Online (Natural) - English (United States)',
+      'Microsoft Christopher Online (Natural) - English (United States)',
+      'Microsoft Eric Online (Natural) - English (United States)',
+      'Microsoft Roger Online (Natural) - English (United States)',
+      // Google voices commonly present in Chrome
+      'Google US English',
+      'Google UK English Male',
+      'Google Deutsch Male',
+    ];
+
+    for (const name of preferredNames) {
+      const v = byLocale.find(x => x.name === name) || voices.find(x => x.name === name);
+      if (v) return v;
+    }
+
+    // 3) Any voice whose name hints at male
+    const maleHint = /(male|andrew|guy|christopher|eric|roger)/i;
+    const vMale = byLocale.find(v => maleHint.test(v.name)) || voices.find(v => maleHint.test(v.name));
+    if (vMale) return vMale;
+
+    // 4) Fallback: any locale match, then first available
+    return byLocale[0] || voices[0] || null;
+  }
+const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Google US English/i, /Google UK English/i, /Wavenet|Neural/i];
     const loc = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
     for (const p of pats) { const v = loc.find(v => p.test(v.name)) || voices.find(v => p.test(v.name)); if (v) return v; }
     return loc[0] || voices[0] || null;
