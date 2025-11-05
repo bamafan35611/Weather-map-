@@ -4,57 +4,9 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Mapbox Weather Intelligence – Enhanced Features</title>
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js">
-// === Performance: single scheduler tick ===
-function startScheduler() {
-    let t = 0;
-    setInterval(() => {
-        t++;
-        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
-        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
-        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
-        try { updateBriefingCountdown(); } catch(e){}
-        try { updateAlertCheckCountdown(); } catch(e){}
-    }, 1000);
-}
-
-
-// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
-    } else {
-        startWarningBlink();
-    }
-});
-
-</script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js">
-// === Performance: single scheduler tick ===
-function startScheduler() {
-    let t = 0;
-    setInterval(() => {
-        t++;
-        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
-        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
-        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
-        try { updateBriefingCountdown(); } catch(e){}
-        try { updateAlertCheckCountdown(); } catch(e){}
-    }, 1000);
-}
-
-
-// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
-    } else {
-        startWarningBlink();
-    }
-});
-
-</script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
 <style>
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -289,7 +241,9 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = 'http://localhost:5000';
+const __api_qp = new URLSearchParams(location.search);
+const BACKEND_BASE_URL = (__api_qp.get('api')) ||
+  ((location.hostname.includes('render.com') || location.hostname.endsWith('onrender.com')) ? '' : 'http://localhost:5000');
 
 let map;
 let speechEnabled = false;
@@ -401,7 +355,7 @@ async function performPeriodicAlertCheck() {
             
             console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
             
-            console.log('🎯 [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
         map.fitBounds(bounds, { 
                 padding: 50, 
                 maxZoom: 10,
@@ -428,7 +382,7 @@ async function performPeriodicAlertCheck() {
             }
             
             console.log(`[15min Check] Zooming BACK OUT to original position...`);
-            console.log('↩️ [Map] Returning to manual view at', new Date().toLocaleTimeString());
+            console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
         map.flyTo({
                 center: viewportCenter,
                 zoom: viewportZoom,
@@ -543,9 +497,9 @@ async function speakText(text, priority = 'normal') {
             
             if (naturalVoice) {
                 utterance.voice = naturalVoice;
-                console.log(`🎙️ Using voice: ${naturalVoice.name}`);
+                console.log(`[voice] Using voice: ${naturalVoice.name}`);
             } else {
-                console.log('⚠️ Natural voice not found, using default browser voice');
+                console.log('[warn] Natural voice not found, using default browser voice');
             }
             
             utterance.onend = () => resolve(true);
@@ -594,7 +548,11 @@ function setupCloseButtons() {
 function initializeMap() {
     console.log("Initializing Mapbox GL JS...");
     
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    const __mb_qp = new URLSearchParams(location.search);
+const __mb_token = (typeof MAPBOX_TOKEN !== 'undefined' && MAPBOX_TOKEN) || __mb_qp.get('mb') || localStorage.getItem('MAPBOX_TOKEN') || '';
+if (__mb_token) { localStorage.setItem('MAPBOX_TOKEN', __mb_token); }
+if (!__mb_token) { console.error('[map] Missing Mapbox token. Provide ?mb=pk.*** or set localStorage.MAPBOX_TOKEN'); }
+mapboxgl.accessToken = __mb_token;
     
     map = new mapboxgl.Map({
         container: 'map',
@@ -754,7 +712,7 @@ async function handleNewAlerts(newAlerts) {
             console.log(`Processing alert ${i+1}/${newAlerts.length}: ${getAlertTitle(alert)}`);
             
             console.log("Zooming IN to alert...");
-            console.log('🎯 [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
         map.fitBounds(bounds, {
                 padding: 50,
                 maxZoom: 10,
@@ -789,7 +747,7 @@ async function handleNewAlerts(newAlerts) {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             console.log("Zooming BACK OUT to viewport...");
-            console.log('↩️ [Map] Returning to manual view at', new Date().toLocaleTimeString());
+            console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
         map.flyTo({
                 center: viewportCenter,
                 zoom: viewportZoom,
@@ -811,14 +769,14 @@ async function handleNewAlerts(newAlerts) {
 }
 
 async function fetchAlerts() {
-    console.log('⚠️ [Alerts] Fetching new alerts at', new Date().toLocaleTimeString());
+    console.log('[warn] [Alerts] Fetching new alerts at', new Date().toLocaleTimeString());
     try {
         console.log("Fetching weather alerts...");
         
         let prioritizedAlerts = [];
         
         try {
-            const backendResponse = await fetch(`${BACKEND_BASE_URL}/api/weather/alerts`, {
+            const backendResponse = await fetch((BACKEND_BASE_URL || '') + /api/weather/alerts, {
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
@@ -1043,7 +1001,7 @@ function addAlertsToMap(alerts) {
 async function fetchOutlooks() {
     try {
         console.log('Fetching weather outlooks...');
-        const response = await fetch(`${BACKEND_BASE_URL}/api/outlooks`);
+        const response = await fetch((BACKEND_BASE_URL || '') + /api/outlooks);
         if (!response.ok) {
             console.warn('Outlooks API unavailable');
             return;
@@ -1144,7 +1102,7 @@ function showOutlookPopup(e, outlook) {
     popup.className = 'custom-outlook-popup';
     popup.style.cssText = `position: fixed;background: rgba(0,0,0,0.9);color: white;padding: 15px;border-radius: 8px;border: 2px solid ${color};min-width: 250px;max-width: 350px;z-index: 10000;box-shadow: 0 4px 12px rgba(0,0,0,0.5);font-family: Arial, sans-serif;`;
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '×';
+    closeBtn.innerHTML = 'x';
     closeBtn.style.cssText = 'position: absolute;top: 8px;right: 8px;width: 24px;height: 24px;background: #ff6666;color: white;border: none;border-radius: 50%;cursor: pointer;font-size: 16px;font-weight: bold;z-index: 10001;';
     closeBtn.addEventListener('click', function(e) {e.preventDefault();e.stopPropagation();popup.remove();});
     const content = document.createElement('div');
@@ -1195,7 +1153,7 @@ function showAlertPopup(e, alert) {
     `;
     
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '×';
+    closeBtn.innerHTML = 'x';
     closeBtn.style.cssText = `
         position: absolute;
         top: 8px;
@@ -1404,7 +1362,7 @@ async function speakHourlyBriefing() {
     console.log("=== HOURLY WEATHER BRIEFING ===");
     
     try {
-        const response = await fetch(`${BACKEND_BASE_URL}/api/weather/forecast`);
+        const response = await fetch((BACKEND_BASE_URL || '') + /api/weather/forecast);
         
         if (response.ok) {
             const data = await response.json();
@@ -1481,7 +1439,7 @@ async function displayPredictions() {
     setTimeout(setupCloseButtons, 100);
     
     try {
-        const response = await fetch(`${BACKEND_BASE_URL}/api/ml/predictions`);
+        const response = await fetch((BACKEND_BASE_URL || '') + /api/ml/predictions);
         
         if (!response.ok) {
             throw new Error(`Backend returned ${response.status}`);
@@ -1490,7 +1448,7 @@ async function displayPredictions() {
         const data = await response.json();
         
         let statusColor = data.model_trained ? '#88ff88' : '#ff8888';
-        let statusIcon = data.model_trained ? '✅' : '❌';
+        let statusIcon = data.model_trained ? '[ok]' : '[err]';
         
         let content = `
             <div style="padding: 12px; background: rgba(${data.model_trained ? '0,255,0' : '255,100,100'},0.15); border-radius: 6px; margin-bottom: 12px; border-left: 4px solid ${statusColor};">
@@ -1553,7 +1511,7 @@ async function displayPredictions() {
         // Update status panel
         const mlStatusEl = document.getElementById('ml-status');
         if (mlStatusEl) {
-            mlStatusEl.textContent = data.model_trained ? 'Trained ✅' : 'Not Trained';
+            mlStatusEl.textContent = data.model_trained ? 'Trained [ok]' : 'Not Trained';
             mlStatusEl.style.color = data.model_trained ? '#88ff88' : '#ff8888';
         }
         
@@ -1561,7 +1519,7 @@ async function displayPredictions() {
         console.error('Error loading ML predictions:', error);
         document.getElementById('predictions-content').innerHTML = `
             <div style="text-align: center; padding: 20px;">
-                <div style="color: #ff8888; margin-bottom: 10px;">❌ Error Loading Predictions</div>
+                <div style="color: #ff8888; margin-bottom: 10px;">[err] Error Loading Predictions</div>
                 <div style="color: #ffaaaa; font-size: 11px;">${error.message}</div>
                 <div style="color: #cccccc; font-size: 10px; margin-top: 10px;">
                     Make sure backend is running with ML integration
@@ -1575,11 +1533,11 @@ function displayPreferences() {
         <div style="margin: 8px 0; padding: 8px; background: rgba(0,255,0,0.1); border-radius: 4px;">
             <h6 style="margin: 0 0 4px 0; color: #88ff88;">Speech-Sync Features:</h6>
             <div style="font-size: 11px;">
-                <div>✅ Map waits for speech completion</div>
-                <div>✅ Proper promise handling</div>
-                <div>✅ Azure TTS integration</div>
-                <div>✅ Browser TTS fallback</div>
-                <div>✅ 15-minute alert re-check</div>
+                <div>[ok] Map waits for speech completion</div>
+                <div>[ok] Proper promise handling</div>
+                <div>[ok] Azure TTS integration</div>
+                <div>[ok] Browser TTS fallback</div>
+                <div>[ok] 15-minute alert re-check</div>
             </div>
         </div>
     `;
@@ -1596,7 +1554,7 @@ async function displayHistory() {
     document.getElementById('history-content').innerHTML = '<div style="text-align: center; padding: 20px;"><div style="color: #ffff88;">Loading weather history...</div></div>';
     setTimeout(setupCloseButtons, 100);
     try {
-        const response = await fetch(`${BACKEND_BASE_URL}/api/learning/history`);
+        const response = await fetch((BACKEND_BASE_URL || '') + /api/learning/history);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (data.history && data.history.length > 0) {
@@ -1652,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log("Testing backend connection...");
     try {
-        const response = await fetch(`${BACKEND_BASE_URL}/api/test`);
+        const response = await fetch((BACKEND_BASE_URL || '') + /api/test);
         if (response.ok) {
             console.log("Backend connected successfully!");
             backendConnected = true;
@@ -1756,13 +1714,13 @@ document.getElementById('test-button').addEventListener('click', async () => {
 console.log("=".repeat(60));
 console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
 console.log("=".repeat(60));
-console.log("✅ Map stays zoomed until speech completes");
-console.log("✅ Proper Promise handling implemented");
-console.log("✅ Azure TTS waits for audio completion");
-console.log("✅ Browser TTS waits for audio completion");
-console.log("✅ 15-minute periodic WARNING re-zoom enabled");
-console.log("✅ Zooms to most severe active WARNING every 15 min");
-console.log("✅ Voice reminder on re-zoom (if voice enabled)");
+console.log("[ok] Map stays zoomed until speech completes");
+console.log("[ok] Proper Promise handling implemented");
+console.log("[ok] Azure TTS waits for audio completion");
+console.log("[ok] Browser TTS waits for audio completion");
+console.log("[ok] 15-minute periodic WARNING re-zoom enabled");
+console.log("[ok] Zooms to most severe active WARNING every 15 min");
+console.log("[ok] Voice reminder on re-zoom (if voice enabled)");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
