@@ -420,7 +420,7 @@ async function performPeriodicAlertCheck() {
             
             console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
             
-            console.log('🎯 [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
         map.fitBounds(bounds, { 
                 padding: 50, 
                 maxZoom: 10,
@@ -447,7 +447,7 @@ async function performPeriodicAlertCheck() {
             }
             
             console.log(`[15min Check] Zooming BACK OUT to original position...`);
-            console.log('↩️ [Map] Returning to manual view at', new Date().toLocaleTimeString());
+            console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
         map.flyTo({
                 center: viewportCenter,
                 zoom: viewportZoom,
@@ -562,9 +562,9 @@ async function speakText(text, priority = 'normal') {
             
             if (naturalVoice) {
                 utterance.voice = naturalVoice;
-                console.log(`🎙️ Using voice: ${naturalVoice.name}`);
+                console.log(`[voice] Using voice: ${naturalVoice.name}`);
             } else {
-                console.log('⚠️ Natural voice not found, using default browser voice');
+                console.log('[warn] Natural voice not found, using default browser voice');
             }
             
             utterance.onend = () => resolve(true);
@@ -773,7 +773,7 @@ async function handleNewAlerts(newAlerts) {
             console.log(`Processing alert ${i+1}/${newAlerts.length}: ${getAlertTitle(alert)}`);
             
             console.log("Zooming IN to alert...");
-            console.log('🎯 [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
         map.fitBounds(bounds, {
                 padding: 50,
                 maxZoom: 10,
@@ -808,7 +808,7 @@ async function handleNewAlerts(newAlerts) {
             await new Promise(resolve => setTimeout(resolve, 500));
             
             console.log("Zooming BACK OUT to viewport...");
-            console.log('↩️ [Map] Returning to manual view at', new Date().toLocaleTimeString());
+            console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
         map.flyTo({
                 center: viewportCenter,
                 zoom: viewportZoom,
@@ -830,7 +830,7 @@ async function handleNewAlerts(newAlerts) {
 }
 
 async function fetchAlerts() {
-    console.log('⚠️ [Alerts] Fetching new alerts at', new Date().toLocaleTimeString());
+    console.log('[warn] [Alerts] Fetching new alerts at', new Date().toLocaleTimeString());
     try {
         console.log("Fetching weather alerts...");
         
@@ -1163,7 +1163,7 @@ function showOutlookPopup(e, outlook) {
     popup.className = 'custom-outlook-popup';
     popup.style.cssText = `position: fixed;background: rgba(0,0,0,0.9);color: white;padding: 15px;border-radius: 8px;border: 2px solid ${color};min-width: 250px;max-width: 350px;z-index: 10000;box-shadow: 0 4px 12px rgba(0,0,0,0.5);font-family: Arial, sans-serif;`;
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '×';
+    closeBtn.innerHTML = 'x';
     closeBtn.style.cssText = 'position: absolute;top: 8px;right: 8px;width: 24px;height: 24px;background: #ff6666;color: white;border: none;border-radius: 50%;cursor: pointer;font-size: 16px;font-weight: bold;z-index: 10001;';
     closeBtn.addEventListener('click', function(e) {e.preventDefault();e.stopPropagation();popup.remove();});
     const content = document.createElement('div');
@@ -1214,7 +1214,7 @@ function showAlertPopup(e, alert) {
     `;
     
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '×';
+    closeBtn.innerHTML = 'x';
     closeBtn.style.cssText = `
         position: absolute;
         top: 8px;
@@ -1509,7 +1509,7 @@ async function displayPredictions() {
         const data = await response.json();
         
         let statusColor = data.model_trained ? '#88ff88' : '#ff8888';
-        let statusIcon = data.model_trained ? '✅' : '❌';
+        let statusIcon = data.model_trained ? '[ok]' : '[err]';
         
         let content = `
             <div style="padding: 12px; background: rgba(${data.model_trained ? '0,255,0' : '255,100,100'},0.15); border-radius: 6px; margin-bottom: 12px; border-left: 4px solid ${statusColor};">
@@ -1572,7 +1572,7 @@ async function displayPredictions() {
         // Update status panel
         const mlStatusEl = document.getElementById('ml-status');
         if (mlStatusEl) {
-            mlStatusEl.textContent = data.model_trained ? 'Trained ✅' : 'Not Trained';
+            mlStatusEl.textContent = data.model_trained ? 'Trained [ok]' : 'Not Trained';
             mlStatusEl.style.color = data.model_trained ? '#88ff88' : '#ff8888';
         }
         
@@ -1580,7 +1580,7 @@ async function displayPredictions() {
         console.error('Error loading ML predictions:', error);
         document.getElementById('predictions-content').innerHTML = `
             <div style="text-align: center; padding: 20px;">
-                <div style="color: #ff8888; margin-bottom: 10px;">❌ Error Loading Predictions</div>
+                <div style="color: #ff8888; margin-bottom: 10px;">[err] Error Loading Predictions</div>
                 <div style="color: #ffaaaa; font-size: 11px;">${error.message}</div>
                 <div style="color: #cccccc; font-size: 10px; margin-top: 10px;">
                     Make sure backend is running with ML integration
@@ -1594,11 +1594,11 @@ function displayPreferences() {
         <div style="margin: 8px 0; padding: 8px; background: rgba(0,255,0,0.1); border-radius: 4px;">
             <h6 style="margin: 0 0 4px 0; color: #88ff88;">Speech-Sync Features:</h6>
             <div style="font-size: 11px;">
-                <div>✅ Map waits for speech completion</div>
-                <div>✅ Proper promise handling</div>
-                <div>✅ Azure TTS integration</div>
-                <div>✅ Browser TTS fallback</div>
-                <div>✅ 15-minute alert re-check</div>
+                <div>[ok] Map waits for speech completion</div>
+                <div>[ok] Proper promise handling</div>
+                <div>[ok] Azure TTS integration</div>
+                <div>[ok] Browser TTS fallback</div>
+                <div>[ok] 15-minute alert re-check</div>
             </div>
         </div>
     `;
@@ -1775,13 +1775,13 @@ document.getElementById('test-button').addEventListener('click', async () => {
 console.log("=".repeat(60));
 console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
 console.log("=".repeat(60));
-console.log("✅ Map stays zoomed until speech completes");
-console.log("✅ Proper Promise handling implemented");
-console.log("✅ Azure TTS waits for audio completion");
-console.log("✅ Browser TTS waits for audio completion");
-console.log("✅ 15-minute periodic WARNING re-zoom enabled");
-console.log("✅ Zooms to most severe active WARNING every 15 min");
-console.log("✅ Voice reminder on re-zoom (if voice enabled)");
+console.log("[ok] Map stays zoomed until speech completes");
+console.log("[ok] Proper Promise handling implemented");
+console.log("[ok] Azure TTS waits for audio completion");
+console.log("[ok] Browser TTS waits for audio completion");
+console.log("[ok] 15-minute periodic WARNING re-zoom enabled");
+console.log("[ok] Zooms to most severe active WARNING every 15 min");
+console.log("[ok] Voice reminder on re-zoom (if voice enabled)");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
