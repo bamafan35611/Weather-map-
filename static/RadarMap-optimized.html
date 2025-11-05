@@ -1641,7 +1641,7 @@ function initWeatherPanelToggle() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => { (async () => {
+document.addEventListener('DOMContentLoaded', () => { ((async () => {
     console.log("Initializing Enhanced Mapbox Weather System - Speech Sync + 15min Alert Check");
     
     initializeMap();
@@ -1668,7 +1668,7 @@ document.addEventListener('DOMContentLoaded', () => { (async () => {
     
     updateWeatherDisplay();
     
-    document.getElementById('enable-voice-button').addEventListener('click', async () => {
+    document.getElementById('enable-voice-button').addEventListener('click', (async () => {
     speechEnabled = !speechEnabled;
     document.getElementById('enable-voice-button').textContent = speechEnabled ? 'Voice: ON' : 'Voice: OFF';
     document.getElementById('enable-voice-button').style.backgroundColor = speechEnabled ? 'rgba(0,255,0,0.4)' : 'rgba(255,255,0,0.2)';
@@ -1689,7 +1689,7 @@ document.getElementById('preferences-button').addEventListener('click', displayP
 document.getElementById('history-button').addEventListener('click', displayHistory);
 document.getElementById('outlooks-button').addEventListener('click', toggleOutlooks);
     
-document.getElementById('test-button').addEventListener('click', async () => {
+document.getElementById('test-button').addEventListener('click', (async () => {
 
         if (speechEnabled) {
             const testMessage = "Testing speech-synchronized zoom. The map should stay in this position until this message finishes speaking.";
@@ -1751,7 +1751,7 @@ document.getElementById('test-button').addEventListener('click', async () => {
     // setInterval(updateAlertCheckCountdown, 1000); // moved to scheduler
     
     console.log("Enhanced Mapbox Weather System ready - Speech synchronization FIXED + 15-min WARNING checks enabled!");
-}})(););
+}})();
 
 console.log("=".repeat(60));
 console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
@@ -1918,7 +1918,7 @@ const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Googl
   const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
   window.speechSynthesis.speak = function (u) {
     if (typeof u === 'string') u = new SpeechSynthesisUtterance(u);
-    if (!voicesCache || !u.voice) { (async () => { await ensureVoice(u); _origSpeak(u); }})();)(); return; }
+    if (!voicesCache || !u.voice) { ((async () => { await ensureVoice(u); _origSpeak(u); }})(); return; }
     _origSpeak(u);
   };
 
