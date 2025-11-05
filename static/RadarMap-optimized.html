@@ -281,7 +281,26 @@ function getAlertTitle(alert) {
     return "Weather Alert";
 }
 
-console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
+console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check\n
+// --- Render-aware backend base URL ---
+const BACKEND_BASE_URL = (() => {
+  const qs = new URLSearchParams(location.search);
+  const override = qs.get("api") || localStorage.getItem("mw_api_base");
+  if (override) return override; // manual override wins
+
+  // If hosted on Render (same-origin), use relative paths
+  if (location.hostname.endsWith("onrender.com")) return "";
+
+  // Local dev: prefer same-origin if a port is present, else fallback to 8000
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+    if (/^https?:\/\/[^:]+:\d+/.test(location.origin)) return location.origin;
+    return "http://127.0.0.1:8000";
+  }
+
+  // Default: same-origin (relative) to avoid mixed content
+  return "";
+})();
+");
 
 // === Performance: toggle logs ===
 const DEBUG_LOGS = false;
@@ -289,7 +308,7 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = (new URLSearchParams(location.search).get('api') || '');
+const BACKEND_BASE_URL = 'http://localhost:5000';
 
 let map;
 let speechEnabled = false;
@@ -594,10 +613,7 @@ function setupCloseButtons() {
 function initializeMap() {
     console.log("Initializing Mapbox GL JS...");
     
-    const __mb_qp = new URLSearchParams(location.search);
-const __mb_token = (typeof MAPBOX_TOKEN !== 'undefined' && MAPBOX_TOKEN) || __mb_qp.get('mb') || localStorage.getItem('MAPBOX_TOKEN') || '';
-if (!__mb_token) { console.error('[map] Missing Mapbox token. Provide ?mb=pk.*** or set localStorage.MAPBOX_TOKEN'); }
-mapboxgl.accessToken = __mb_token;
+    mapboxgl.accessToken = MAPBOX_TOKEN;
     
     map = new mapboxgl.Map({
         container: 'map',
@@ -1644,7 +1660,7 @@ function initWeatherPanelToggle() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => { (async () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log("Initializing Enhanced Mapbox Weather System - Speech Sync + 15min Alert Check");
     
     initializeMap();
@@ -1684,7 +1700,7 @@ document.addEventListener('DOMContentLoaded', () => { (async () => {
     updateWeatherDisplay();
 
     startScheduler();
-})();});
+});
     
 document.getElementById('analytics-button').addEventListener('click', displayAnalytics);
 document.getElementById('predictions-button').addEventListener('click', displayPredictions);
@@ -1796,7 +1812,7 @@ document.addEventListener('visibilitychange', () => {
 <script>
 async function classifyAlert(alert) {
     try {
-        const response = await fetch(BACKEND_BASE_URL || ''/api/ml/severe", {
+        const response = await fetch("http://localhost:5000/api/ml/severe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
