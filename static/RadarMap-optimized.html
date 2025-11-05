@@ -776,7 +776,7 @@ async function fetchAlerts() {
         let prioritizedAlerts = [];
         
         try {
-            const backendResponse = await fetch((BACKEND_BASE_URL || '') + /api/weather/alerts, {
+            const backendResponse = await fetch((BACKEND_BASE_URL || '') + '/api/weather/alerts', {
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
@@ -1001,7 +1001,7 @@ function addAlertsToMap(alerts) {
 async function fetchOutlooks() {
     try {
         console.log('Fetching weather outlooks...');
-        const response = await fetch((BACKEND_BASE_URL || '') + /api/outlooks);
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/outlooks');
         if (!response.ok) {
             console.warn('Outlooks API unavailable');
             return;
@@ -1362,7 +1362,7 @@ async function speakHourlyBriefing() {
     console.log("=== HOURLY WEATHER BRIEFING ===");
     
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + /api/weather/forecast);
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/weather/forecast');
         
         if (response.ok) {
             const data = await response.json();
@@ -1439,7 +1439,7 @@ async function displayPredictions() {
     setTimeout(setupCloseButtons, 100);
     
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + /api/ml/predictions);
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/ml/predictions');
         
         if (!response.ok) {
             throw new Error(`Backend returned ${response.status}`);
@@ -1554,7 +1554,7 @@ async function displayHistory() {
     document.getElementById('history-content').innerHTML = '<div style="text-align: center; padding: 20px;"><div style="color: #ffff88;">Loading weather history...</div></div>';
     setTimeout(setupCloseButtons, 100);
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + /api/learning/history);
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/learning/history');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (data.history && data.history.length > 0) {
@@ -1610,7 +1610,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log("Testing backend connection...");
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + /api/test);
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/test');
         if (response.ok) {
             console.log("Backend connected successfully!");
             backendConnected = true;
