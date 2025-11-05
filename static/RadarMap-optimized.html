@@ -289,7 +289,7 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = 'http://localhost:5000';
+const BACKEND_BASE_URL = (new URLSearchParams(location.search).get('api') || '');
 
 let map;
 let speechEnabled = false;
@@ -594,7 +594,10 @@ function setupCloseButtons() {
 function initializeMap() {
     console.log("Initializing Mapbox GL JS...");
     
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    const __mb_qp = new URLSearchParams(location.search);
+const __mb_token = (typeof MAPBOX_TOKEN !== 'undefined' && MAPBOX_TOKEN) || __mb_qp.get('mb') || localStorage.getItem('MAPBOX_TOKEN') || '';
+if (!__mb_token) { console.error('[map] Missing Mapbox token. Provide ?mb=pk.*** or set localStorage.MAPBOX_TOKEN'); }
+mapboxgl.accessToken = __mb_token;
     
     map = new mapboxgl.Map({
         container: 'map',
@@ -1793,7 +1796,7 @@ document.addEventListener('visibilitychange', () => {
 <script>
 async function classifyAlert(alert) {
     try {
-        const response = await fetch("http://localhost:5000/api/ml/severe", {
+        const response = await fetch(BACKEND_BASE_URL || ''/api/ml/severe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
