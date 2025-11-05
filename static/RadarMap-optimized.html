@@ -248,10 +248,26 @@ const BACKEND_BASE_URL = (__api_qp.get('api')) ||
 let map;
 let speechEnabled = false;
 let currentForecast = null;
+let backendConnected = false;
+let connectionRetries = 0;
+const maxRetries = 5;
+const readAlerts = new Set();
+let countyLayerVisible = false;
+let outlooksVisible = true;
+
+let activeWarnings = [];
+let allActiveAlerts = [];
+
+// Zoom lock prevention
+let _alertProcessingInProgress = false;
+let _userMovedMapDuringProcessing = false;
+let _savedViewport = null;
+
+// Countdown timers (global scope for scheduler access)
 let briefingCountdown = 3600;
 let alertCheckCountdown = 900;
 
-// Countdown update functions (global scope for scheduler access)
+// Countdown update functions
 function updateBriefingCountdown() {
     const minutes = Math.floor(briefingCountdown / 60);
     const seconds = briefingCountdown % 60;
@@ -286,15 +302,8 @@ function updateAlertCheckCountdown() {
         performPeriodicAlertCheck();
     }
 }
-let backendConnected = false;
-let connectionRetries = 0;
-const maxRetries = 5;
-const readAlerts = new Set();
-let countyLayerVisible = false;
-let outlooksVisible = true;
 
-let activeWarnings = [];
-let allActiveAlerts = [];
+
 
 
 
@@ -327,11 +336,21 @@ function getAlertBBox(featureOrWrapper) {
     }
 }
 async function performPeriodicAlertCheck() {
+    // Prevent concurrent execution
+    if (_alertProcessingInProgress) {
+        console.log("[15min Check] Skipping - another alert sequence is already running");
+        return;
+    }
+    
+    _alertProcessingInProgress = true;
+    _userMovedMapDuringProcessing = false;
+    
     console.log(`[15min Check] Starting periodic warning check...`);
     console.log(`[15min Check] Active warnings count: ${activeWarnings.length}`);
     
     if (activeWarnings.length === 0) {
         console.log("[15min Check] No active warnings to re-zoom to");
+        _alertProcessingInProgress = false;
         return;
     }
     
@@ -345,6 +364,7 @@ async function performPeriodicAlertCheck() {
     
     if (warningsWithGeometry.length === 0) {
         console.log("[15min Check] No warnings have geometry data - cannot zoom");
+        _alertProcessingInProgress = false;
         return;
     }
     
@@ -371,6 +391,7 @@ async function performPeriodicAlertCheck() {
     
     if (viewportWarnings.length === 0) {
         console.log("[15min Check] No warnings in current viewport");
+        _alertProcessingInProgress = false;
         return;
     }
     
@@ -419,15 +440,20 @@ async function performPeriodicAlertCheck() {
                 popup.remove();
             }
             
-            console.log(`[15min Check] Zooming BACK OUT to original position...`);
-            console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
-        map.flyTo({
-                center: viewportCenter,
-                zoom: viewportZoom,
-                duration: 2000
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, 2500));
+            // Only zoom back if user hasn't manually moved the map
+            if (!_userMovedMapDuringProcessing) {
+                console.log(`[15min Check] Zooming BACK OUT to original position...`);
+                console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
+                map.flyTo({
+                    center: viewportCenter,
+                    zoom: viewportZoom,
+                    duration: 2000
+                });
+                
+                await new Promise(resolve => setTimeout(resolve, 2500));
+            } else {
+                console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
+            }
             
             if (i < viewportWarnings.length - 1) {
                 console.log(`[15min Check] Waiting 15 seconds before next warning...`);
@@ -440,6 +466,7 @@ async function performPeriodicAlertCheck() {
     }
     
     console.log(`[15min Check] Complete - cycled through ${viewportWarnings.length} warnings`);
+    _alertProcessingInProgress = false;
 }
 
 
@@ -614,6 +641,22 @@ mapboxgl.accessToken = __mb_token;
     
     map.on('zoom', updateCountyVisibility);
     map.on('move', updateZoomDisplay);
+    
+    // Track user movements during alert processing
+    map.on('dragstart', () => {
+        if (_alertProcessingInProgress) {
+            console.log('[zoom-fix] User moved map during alert processing');
+            _userMovedMapDuringProcessing = true;
+        }
+    });
+    
+    map.on('zoomstart', (e) => {
+        // Only flag if it's a user-initiated zoom (not programmatic)
+        if (_alertProcessingInProgress && e.originalEvent) {
+            console.log('[zoom-fix] User zoomed map during alert processing');
+            _userMovedMapDuringProcessing = true;
+        }
+    });
 }
 
 async function addStateBorders() {
@@ -732,6 +775,15 @@ function updateCountyVisibility() {
 }
 
 async function handleNewAlerts(newAlerts) {
+    // Prevent concurrent execution
+    if (_alertProcessingInProgress) {
+        console.log("[Alert] Skipping - another alert sequence is already running");
+        return;
+    }
+    
+    _alertProcessingInProgress = true;
+    _userMovedMapDuringProcessing = false;
+    
     console.log(`Handling ${newAlerts.length} new alerts with speech-synchronized zoom`);
     
     const viewportCenter = map.getCenter();
@@ -784,15 +836,20 @@ async function handleNewAlerts(newAlerts) {
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
-            console.log("Zooming BACK OUT to viewport...");
-            console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
-        map.flyTo({
-                center: viewportCenter,
-                zoom: viewportZoom,
-                duration: 2000
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, 2500));
+            // Only zoom back if user hasn't manually moved the map
+            if (!_userMovedMapDuringProcessing) {
+                console.log("Zooming BACK OUT to viewport...");
+                console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
+                map.flyTo({
+                    center: viewportCenter,
+                    zoom: viewportZoom,
+                    duration: 2000
+                });
+                
+                await new Promise(resolve => setTimeout(resolve, 2500));
+            } else {
+                console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
+            }
             
             if (i < newAlerts.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 5000));
@@ -804,6 +861,7 @@ async function handleNewAlerts(newAlerts) {
     }
     
     console.log("Alert processing complete - speech synchronized");
+    _alertProcessingInProgress = false;
 }
 
 async function fetchAlerts() {
@@ -1675,6 +1733,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     updateWeatherDisplay();
+
+    startScheduler();
 });
     
 document.getElementById('analytics-button').addEventListener('click', displayAnalytics);
