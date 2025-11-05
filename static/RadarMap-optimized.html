@@ -309,7 +309,7 @@ let allActiveAlerts = [];
 function updateActiveWarnings(alerts) {
     activeWarnings = alerts.filter(alert => {
         const title = getAlertTitle(alert).toLowerCase();
-        return title.includes("warning");
+        return title.includes('warning') || title.includes('special weather statement');
     });
     allActiveAlerts = alerts;
     console.log(`[Repeat] Tracking ${activeWarnings.length} active warnings for 15-min re-announcement.`);
@@ -895,7 +895,7 @@ async function fetchAlerts() {
             type: 'Feature',
             properties: {
                 ...alert,
-                isWarning: (alert.event || alert.properties?.event || '').toLowerCase().includes('warning'),
+                isWarning: /(warning|special weather statement)/i.test((alert.event || alert.properties?.event || '')),
                 color: getAlertColor(alert.event || alert.properties?.event || 'unknown'),
                 source: 'monitored_counties'
             },
@@ -1641,7 +1641,7 @@ function initWeatherPanelToggle() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => { (async () => {
     console.log("Initializing Enhanced Mapbox Weather System - Speech Sync + 15min Alert Check");
     
     initializeMap();
@@ -1751,7 +1751,7 @@ document.getElementById('test-button').addEventListener('click', async () => {
     // setInterval(updateAlertCheckCountdown, 1000); // moved to scheduler
     
     console.log("Enhanced Mapbox Weather System ready - Speech synchronization FIXED + 15-min WARNING checks enabled!");
-});
+}})(););
 
 console.log("=".repeat(60));
 console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
@@ -1918,7 +1918,7 @@ const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Googl
   const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
   window.speechSynthesis.speak = function (u) {
     if (typeof u === 'string') u = new SpeechSynthesisUtterance(u);
-    if (!voicesCache || !u.voice) { (async () => { await ensureVoice(u); _origSpeak(u); })(); return; }
+    if (!voicesCache || !u.voice) { (async () => { await ensureVoice(u); _origSpeak(u); }})();)(); return; }
     _origSpeak(u);
   };
 
