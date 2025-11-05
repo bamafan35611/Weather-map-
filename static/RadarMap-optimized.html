@@ -1836,9 +1836,11 @@ document.addEventListener('visibilitychange', () => {
 </script>
 
 
+
 <script>
 (function () {
   if (!('speechSynthesis' in window)) return;
+
   let voicesCache = null;
   const qp = new URLSearchParams(location.search);
 
@@ -1851,51 +1853,35 @@ document.addEventListener('visibilitychange', () => {
     });
   }
 
-  
   function pickBestVoice(voices, opts = {}) {
-    const qp = new URLSearchParams(location.search);
     const force = opts.force || qp.get('voice') || localStorage.getItem('mw_voice');
-
-    // 1) Honor explicit choice
     if (force) {
       const exact = voices.find(v => v.name === force);
       if (exact) return exact;
     }
-
     const locale = (opts.locale || 'en-US').toLowerCase();
     const byLocale = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
 
-    // 2) Preferred male voices by name (Render-agnostic: depends on browser)
+    // Preferred male voices (Edge first, then Chrome)
     const preferredNames = [
-      // Microsoft Edge Online (Natural) male voices
       'Microsoft Andrew Online (Natural) - English (United States)',
       'Microsoft Guy Online (Natural) - English (United States)',
       'Microsoft Christopher Online (Natural) - English (United States)',
       'Microsoft Eric Online (Natural) - English (United States)',
       'Microsoft Roger Online (Natural) - English (United States)',
-      // Google voices commonly present in Chrome
       'Google US English',
-      'Google UK English Male',
-      'Google Deutsch Male',
+      'Google UK English Male'
     ];
-
     for (const name of preferredNames) {
       const v = byLocale.find(x => x.name === name) || voices.find(x => x.name === name);
       if (v) return v;
     }
 
-    // 3) Any voice whose name hints at male
     const maleHint = /(male|andrew|guy|christopher|eric|roger)/i;
     const vMale = byLocale.find(v => maleHint.test(v.name)) || voices.find(v => maleHint.test(v.name));
     if (vMale) return vMale;
 
-    // 4) Fallback: any locale match, then first available
     return byLocale[0] || voices[0] || null;
-  }
-const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Google US English/i, /Google UK English/i, /Wavenet|Neural/i];
-    const loc = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
-    for (const p of pats) { const v = loc.find(v => p.test(v.name)) || voices.find(v => p.test(v.name)); if (v) return v; }
-    return loc[0] || voices[0] || null;
   }
 
   async function ensureVoice(u) {
@@ -1903,13 +1889,18 @@ const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Googl
       const voices = voicesCache || (voicesCache = await waitForVoices());
       if (!u.voice) u.voice = pickBestVoice(voices, { locale: u.lang || 'en-US' });
       if (!u.lang && u.voice && u.voice.lang) u.lang = u.voice.lang;
-      if (!u.rate) u.rate = 1.0; if (!u.pitch) u.pitch = 1.0; if (!u.volume) u.volume = 1.0;
+      if (typeof u.rate !== 'number' || !u.rate)  u.rate = 1.0;
+      if (typeof u.pitch !== 'number' || !u.pitch) u.pitch = 1.0;
+      if (typeof u.volume !== 'number' || !u.volume) u.volume = 1.0;
     } catch (e) { console.warn('[voice shim] ensureVoice failed', e); }
   }
 
   window.speak = async function (text, opts = {}) {
     const u = new SpeechSynthesisUtterance(String(text ?? ''));
-    if (opts.lang) u.lang = opts.lang; if (opts.rate) u.rate = opts.rate; if (opts.pitch) u.pitch = opts.pitch; if (opts.volume) u.volume = opts.volume;
+    if (opts.lang)   u.lang = opts.lang;
+    if (opts.rate)   u.rate = opts.rate;
+    if (opts.pitch)  u.pitch = opts.pitch;
+    if (opts.volume) u.volume = opts.volume;
     await ensureVoice(u);
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(u);
@@ -1918,13 +1909,14 @@ const pats = [/Microsoft .* Online \(Natural\)/i, /Microsoft .* Neural/i, /Googl
   const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
   window.speechSynthesis.speak = function (u) {
     if (typeof u === 'string') u = new SpeechSynthesisUtterance(u);
-    if (!voicesCache || !u.voice) { ((async () => { await ensureVoice(u); _origSpeak(u); }})(); return; }
+    if (!voicesCache || !u.voice) { (async () => { await ensureVoice(u); _origSpeak(u); })(); return; }
     _origSpeak(u);
   };
 
   console.log('[voice shim] natural voice selection active');
 })();
 </script>
+
 
 
 <script>
