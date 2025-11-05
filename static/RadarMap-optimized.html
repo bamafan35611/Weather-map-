@@ -248,6 +248,44 @@ const BACKEND_BASE_URL = (__api_qp.get('api')) ||
 let map;
 let speechEnabled = false;
 let currentForecast = null;
+let briefingCountdown = 3600;
+let alertCheckCountdown = 900;
+
+// Countdown update functions (global scope for scheduler access)
+function updateBriefingCountdown() {
+    const minutes = Math.floor(briefingCountdown / 60);
+    const seconds = briefingCountdown % 60;
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const briefingEl = document.getElementById('next-briefing');
+    if (briefingEl) {
+        briefingEl.textContent = `Next: ${timeString}`;
+    }
+    
+    briefingCountdown--;
+    if (briefingCountdown < 0) {
+        console.log("Hourly briefing countdown reached zero - triggering automated briefing");
+        briefingCountdown = 3600;
+        speakHourlyBriefing();
+    }
+}
+
+function updateAlertCheckCountdown() {
+    const minutes = Math.floor(alertCheckCountdown / 60);
+    const seconds = alertCheckCountdown % 60;
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const alertCheckEl = document.getElementById('next-alert-check');
+    if (alertCheckEl) {
+        alertCheckEl.textContent = `Alert Check: ${timeString}`;
+    }
+    
+    alertCheckCountdown--;
+    if (alertCheckCountdown < 0) {
+        console.log("15-minute warning check countdown reached zero - re-zooming to most severe warning");
+        alertCheckCountdown = 900;
+        
+        performPeriodicAlertCheck();
+    }
+}
 let backendConnected = false;
 let connectionRetries = 0;
 const maxRetries = 5;
@@ -1637,8 +1675,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     updateWeatherDisplay();
-
-    startScheduler();
 });
     
 document.getElementById('analytics-button').addEventListener('click', displayAnalytics);
@@ -1662,51 +1698,12 @@ document.getElementById('test-button').addEventListener('click', async () => {
     // setInterval(fetchOutlooks, 300000); // moved to scheduler
     // setInterval(updateWeatherDisplay, 5000); // moved to scheduler
     
-    let briefingCountdown = 3600;
-  
-    
-    function updateBriefingCountdown() {
-        const minutes = Math.floor(briefingCountdown / 60);
-        const seconds = briefingCountdown % 60;
-        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        const briefingEl = document.getElementById('next-briefing');
-        if (briefingEl) {
-            briefingEl.textContent = `Next: ${timeString}`;
-        }
-        
-        briefingCountdown--;
-        if (briefingCountdown < 0) {
-            console.log("Hourly briefing countdown reached zero - triggering automated briefing");
-            briefingCountdown = 3600;
-            speakHourlyBriefing();
-        }
-    }
-    
+    // Initialize countdown displays
     updateBriefingCountdown();
-    // setInterval(updateBriefingCountdown, 1000); // moved to scheduler
-    
-    let alertCheckCountdown = 900;
-    
-    function updateAlertCheckCountdown() {
-        const minutes = Math.floor(alertCheckCountdown / 60);
-        const seconds = alertCheckCountdown % 60;
-        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        const alertCheckEl = document.getElementById('next-alert-check');
-        if (alertCheckEl) {
-            alertCheckEl.textContent = `Alert Check: ${timeString}`;
-        }
-        
-        alertCheckCountdown--;
-        if (alertCheckCountdown < 0) {
-            console.log("15-minute warning check countdown reached zero - re-zooming to most severe warning");
-            alertCheckCountdown = 900;
-            
-            performPeriodicAlertCheck();
-        }
-    }
-    
     updateAlertCheckCountdown();
-    // setInterval(updateAlertCheckCountdown, 1000); // moved to scheduler
+    
+    // Start the main scheduler
+    startScheduler();
     
     console.log("Enhanced Mapbox Weather System ready - Speech synchronization FIXED + 15-min WARNING checks enabled!");
 });
@@ -1767,20 +1764,6 @@ async function classifyAlert(alert) {
         return { severe: false, probability: 0.0 };
     }
 }
-
-// === Performance: single scheduler tick ===
-function startScheduler() {
-    let t = 0;
-    setInterval(() => {
-        t++;
-        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
-        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
-        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
-        try { updateBriefingCountdown(); } catch(e){}
-        try { updateAlertCheckCountdown(); } catch(e){}
-    }, 1000);
-}
-
 
 // Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
 document.addEventListener('visibilitychange', () => {
