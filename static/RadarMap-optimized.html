@@ -289,7 +289,7 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const BACKEND_BASE_URL = '';
+const BACKEND_BASE_URL = 'http://localhost:5000';
 
 let map;
 let speechEnabled = false;
@@ -309,7 +309,7 @@ let allActiveAlerts = [];
 function updateActiveWarnings(alerts) {
     activeWarnings = alerts.filter(alert => {
         const title = getAlertTitle(alert).toLowerCase();
-        return title.includes('warning') || title.includes('special weather statement');
+        return title.includes("warning");
     });
     allActiveAlerts = alerts;
     console.log(`[Repeat] Tracking ${activeWarnings.length} active warnings for 15-min re-announcement.`);
@@ -895,7 +895,7 @@ async function fetchAlerts() {
             type: 'Feature',
             properties: {
                 ...alert,
-                isWarning: /(warning|special weather statement)/i.test((alert.event || alert.properties?.event || '')),
+                isWarning: (alert.event || alert.properties?.event || '').toLowerCase().includes('warning'),
                 color: getAlertColor(alert.event || alert.properties?.event || 'unknown'),
                 source: 'monitored_counties'
             },
@@ -1641,7 +1641,7 @@ function initWeatherPanelToggle() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => { ((async () => {
+document.addEventListener('DOMContentLoaded', () => { (async () => {
     console.log("Initializing Enhanced Mapbox Weather System - Speech Sync + 15min Alert Check");
     
     initializeMap();
@@ -1668,7 +1668,7 @@ document.addEventListener('DOMContentLoaded', () => { ((async () => {
     
     updateWeatherDisplay();
     
-    document.getElementById('enable-voice-button').addEventListener('click', (async () => {
+    document.getElementById('enable-voice-button').addEventListener('click', async () => {
     speechEnabled = !speechEnabled;
     document.getElementById('enable-voice-button').textContent = speechEnabled ? 'Voice: ON' : 'Voice: OFF';
     document.getElementById('enable-voice-button').style.backgroundColor = speechEnabled ? 'rgba(0,255,0,0.4)' : 'rgba(255,255,0,0.2)';
@@ -1689,7 +1689,7 @@ document.getElementById('preferences-button').addEventListener('click', displayP
 document.getElementById('history-button').addEventListener('click', displayHistory);
 document.getElementById('outlooks-button').addEventListener('click', toggleOutlooks);
     
-document.getElementById('test-button').addEventListener('click', (async () => {
+document.getElementById('test-button').addEventListener('click', async () => {
 
         if (speechEnabled) {
             const testMessage = "Testing speech-synchronized zoom. The map should stay in this position until this message finishes speaking.";
@@ -1751,7 +1751,7 @@ document.getElementById('test-button').addEventListener('click', (async () => {
     // setInterval(updateAlertCheckCountdown, 1000); // moved to scheduler
     
     console.log("Enhanced Mapbox Weather System ready - Speech synchronization FIXED + 15-min WARNING checks enabled!");
-}})();
+});
 
 console.log("=".repeat(60));
 console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
@@ -1833,140 +1833,6 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-</script>
-
-
-
-<script>
-(function () {
-  if (!('speechSynthesis' in window)) return;
-
-  let voicesCache = null;
-  const qp = new URLSearchParams(location.search);
-
-  function waitForVoices(timeoutMs = 2500) {
-    const have = window.speechSynthesis.getVoices();
-    if (have && have.length) return Promise.resolve(have);
-    return new Promise((resolve) => {
-      const to = setTimeout(() => resolve(window.speechSynthesis.getVoices()), timeoutMs);
-      window.speechSynthesis.onvoiceschanged = () => { clearTimeout(to); resolve(window.speechSynthesis.getVoices()); };
-    });
-  }
-
-  function pickBestVoice(voices, opts = {}) {
-    const force = opts.force || qp.get('voice') || localStorage.getItem('mw_voice');
-    if (force) {
-      const exact = voices.find(v => v.name === force);
-      if (exact) return exact;
-    }
-    const locale = (opts.locale || 'en-US').toLowerCase();
-    const byLocale = voices.filter(v => (v.lang || '').toLowerCase().startsWith(locale));
-
-    // Preferred male voices (Edge first, then Chrome)
-    const preferredNames = [
-      'Microsoft Andrew Online (Natural) - English (United States)',
-      'Microsoft Guy Online (Natural) - English (United States)',
-      'Microsoft Christopher Online (Natural) - English (United States)',
-      'Microsoft Eric Online (Natural) - English (United States)',
-      'Microsoft Roger Online (Natural) - English (United States)',
-      'Google US English',
-      'Google UK English Male'
-    ];
-    for (const name of preferredNames) {
-      const v = byLocale.find(x => x.name === name) || voices.find(x => x.name === name);
-      if (v) return v;
-    }
-
-    const maleHint = /(male|andrew|guy|christopher|eric|roger)/i;
-    const vMale = byLocale.find(v => maleHint.test(v.name)) || voices.find(v => maleHint.test(v.name));
-    if (vMale) return vMale;
-
-    return byLocale[0] || voices[0] || null;
-  }
-
-  async function ensureVoice(u) {
-    try {
-      const voices = voicesCache || (voicesCache = await waitForVoices());
-      if (!u.voice) u.voice = pickBestVoice(voices, { locale: u.lang || 'en-US' });
-      if (!u.lang && u.voice && u.voice.lang) u.lang = u.voice.lang;
-      if (typeof u.rate !== 'number' || !u.rate)  u.rate = 1.0;
-      if (typeof u.pitch !== 'number' || !u.pitch) u.pitch = 1.0;
-      if (typeof u.volume !== 'number' || !u.volume) u.volume = 1.0;
-    } catch (e) { console.warn('[voice shim] ensureVoice failed', e); }
-  }
-
-  window.speak = async function (text, opts = {}) {
-    const u = new SpeechSynthesisUtterance(String(text ?? ''));
-    if (opts.lang)   u.lang = opts.lang;
-    if (opts.rate)   u.rate = opts.rate;
-    if (opts.pitch)  u.pitch = opts.pitch;
-    if (opts.volume) u.volume = opts.volume;
-    await ensureVoice(u);
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(u);
-  };
-
-  const _origSpeak = window.speechSynthesis.speak.bind(window.speechSynthesis);
-  window.speechSynthesis.speak = function (u) {
-    if (typeof u === 'string') u = new SpeechSynthesisUtterance(u);
-    if (!voicesCache || !u.voice) { (async () => { await ensureVoice(u); _origSpeak(u); })(); return; }
-    _origSpeak(u);
-  };
-
-  console.log('[voice shim] natural voice selection active');
-})();
-</script>
-
-
-
-<script>
-// === Robust live countdowns for "Next" and "Alert Check" ===
-(function () {
-  if (window.__mw_countdown_started) return;
-  window.__mw_countdown_started = true;
-
-  function findByIdsOrText(candidates, textPrefix) {
-    for (const id of candidates) { const el = document.getElementById(id); if (el) return el; }
-    const all = document.querySelectorAll('body *:not(script):not(style)');
-    for (const el of all) { const t = (el.textContent || '').trim(); if (t.startsWith(textPrefix)) return el; }
-    return null;
-  }
-
-  const nextEl  = findByIdsOrText(['nextTimer','next-briefing','next_briefing'], 'Next:');
-  const alertEl = findByIdsOrText(['alertTimer','next-alert-check','alert_check'], 'Alert Check:');
-
-  if (!nextEl && !alertEl) return;
-
-  let nextSecs  = 60 * 60;
-  let alertSecs = 15 * 60;
-
-  const fmt = (secs) => {
-    const m = String(Math.floor(secs / 60)).padStart(2, '0');
-    const s = String(secs % 60).padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
-  if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
-
-  window.__mw_countdown_interval = window.setInterval(() => {
-    if (nextSecs > 0) nextSecs--;
-    if (alertSecs > 0) alertSecs--;
-
-    if (nextEl)  nextEl.textContent  = `Next: ${fmt(nextSecs)}`;
-    if (alertEl) alertEl.textContent = `Alert Check: ${fmt(alertSecs)}`;
-
-    if (nextSecs === 0) {
-      nextSecs = 60 * 60;
-      if (typeof speakHourlyBriefing === 'function') { try { speakHourlyBriefing(); } catch (e) {} }
-    }
-    if (alertSecs === 0) {
-      alertSecs = 15 * 60;
-      if (typeof performPeriodicAlertCheck === 'function') { try { performPeriodicAlertCheck(); } catch (e) {} }
-      else if (typeof checkAlerts === 'function') { try { checkAlerts(); } catch (e) {} }
-    }
-  }, 1000);
-})();
 </script>
 
 </body>
