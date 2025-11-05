@@ -1404,17 +1404,22 @@ function showAutoAlertPopup(alert) {
 
 function getAlertColor(eventType) {
     const eventColors = {
-        "Tornado Warning": "#FF0000",
-        "Tornado Watch": "#FFD700", 
-        "Severe Thunderstorm Warning": "#FFA500",
-        "Severe Thunderstorm Watch": "#FFFF00",
-        "Flash Flood Warning": "#8B0000",
-        "Flash Flood Watch": "#00FF00",
-        "Flood Warning": "#00CED1",
-        "Flood Watch": "#98FB98",
-        "Special Weather Statement": "#C0C0C0",
-        "Winter Storm Warning": "#FF69B4",
-        "Winter Weather Advisory": "#DDA0DD"
+        // WARNINGS - Red/Orange spectrum (most severe)
+        "Tornado Warning": "#FF0000",            // Red
+        "Severe Thunderstorm Warning": "#FFA500",// Orange
+        "Flash Flood Warning": "#8B0000",        // Dark Red
+        "Flood Warning": "#00CED1",              // Dark Turquoise
+        "Winter Storm Warning": "#FF69B4",       // Hot Pink
+        
+        // WATCHES - Blue/Orange spectrum (be prepared)
+        "Tornado Watch": "#FF8C00",              // Dark Orange (brighter than old gold)
+        "Severe Thunderstorm Watch": "#FFD700",  // Gold (more visible than yellow)
+        "Flash Flood Watch": "#00BFFF",          // Deep Sky Blue (instead of green)
+        "Flood Watch": "#87CEEB",                // Sky Blue (instead of pale green)
+        
+        // ADVISORIES & STATEMENTS
+        "Special Weather Statement": "#00BFFF",  // Deep Sky Blue (instead of gray)
+        "Winter Weather Advisory": "#DDA0DD"     // Plum
     };
     
     return eventColors[eventType] || '#808080';
