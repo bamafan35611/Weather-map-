@@ -428,7 +428,8 @@ async function performPeriodicAlertCheck() {
             
             if (speechEnabled) {
                 const alertType = alert.properties?.event || 'Weather Alert';
-                const reminderText = `Reminder: ${alertType} is still in effect.`;
+                const affectedAreas = alert.properties?.areaDesc || 'multiple areas';
+                const reminderText = `Reminder: ${alertType} for ${affectedAreas} is still in effect.`;
                 console.log(`[15min Check] Speaking: ${reminderText}`);
                 await speakText(reminderText, 'periodic-check');
             }
