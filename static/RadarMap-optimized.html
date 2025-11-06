@@ -4,9 +4,57 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1" name="viewport"/>
 <title>Mapbox Weather Intelligence – Enhanced Features</title>
-<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js">
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
+</script>
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js">
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
+
+// Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        if (window._warningBlinkTimer) { clearInterval(window._warningBlinkTimer); window._warningBlinkTimer = null; }
+    } else {
+        startWarningBlink();
+    }
+});
+
+</script>
 
 <style>
 html, body { height: 100%; margin: 0; padding: 0; }
@@ -160,6 +208,49 @@ header {
 
 }
 </style>
+
+<!-- BEGIN TTS RELAY -->
+<script>
+(function(){
+  // Relay lets Edge speak with natural voice while OBS runs Browser Source.
+  const RELAY_URL = window.TTS_RELAY_URL || "ws://127.0.0.1:8765";
+  let ttsWS = null;
+  try {
+    ttsWS = new WebSocket(RELAY_URL);
+    ttsWS.onopen = () => console.log("[tts] relay connected");
+    ttsWS.onclose = () => console.warn("[tts] relay closed");
+    ttsWS.onerror = (e) => console.warn("[tts] relay error", e);
+  } catch(e) { console.warn("[tts] relay init failed", e); }
+
+  // Preserve any existing speak() as fallback
+  const nativeSpeak = (function(){
+    if (typeof window.speak === "function") return window.speak;
+    return function(text, opts={}) {
+      try {
+        const u = new SpeechSynthesisUtterance(String(text ?? ""));
+        if (opts.lang) u.lang = opts.lang;
+        if (opts.rate) u.rate = opts.rate;
+        if (opts.pitch) u.pitch = opts.pitch;
+        if (opts.volume) u.volume = opts.volume;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      } catch(e) { console.warn("[tts] native speak failed", e); }
+    };
+  })();
+
+  window.speak = function(text, opts={}){
+    if (ttsWS && ttsWS.readyState === 1) {
+      try {
+        ttsWS.send(JSON.stringify({ text, ...opts }));
+        return;
+      } catch(e) { console.warn("[tts] send failed", e); }
+    }
+    // Fallback to in-page speech if relay not up
+    nativeSpeak(text, opts);
+  };
+})();
+</script>
+<!-- END TTS RELAY -->
 </head>
 <body>
 <header>
@@ -241,9 +332,7 @@ if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
-const __api_qp = new URLSearchParams(location.search);
-const BACKEND_BASE_URL = (__api_qp.get('api')) ||
-  ((location.hostname.includes('render.com') || location.hostname.endsWith('onrender.com')) ? '' : 'http://localhost:5000');
+const BACKEND_BASE_URL = 'http://localhost:5000';
 
 let map;
 let speechEnabled = false;
@@ -257,53 +346,6 @@ let outlooksVisible = true;
 
 let activeWarnings = [];
 let allActiveAlerts = [];
-
-// Zoom lock prevention
-let _alertProcessingInProgress = false;
-let _userMovedMapDuringProcessing = false;
-let _savedViewport = null;
-
-// Countdown timers (global scope for scheduler access)
-let briefingCountdown = 3600;
-let alertCheckCountdown = 900;
-
-// Countdown update functions
-function updateBriefingCountdown() {
-    const minutes = Math.floor(briefingCountdown / 60);
-    const seconds = briefingCountdown % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    const briefingEl = document.getElementById('next-briefing');
-    if (briefingEl) {
-        briefingEl.textContent = `Next: ${timeString}`;
-    }
-    
-    briefingCountdown--;
-    if (briefingCountdown < 0) {
-        console.log("Hourly briefing countdown reached zero - triggering automated briefing");
-        briefingCountdown = 3600;
-        speakHourlyBriefing();
-    }
-}
-
-function updateAlertCheckCountdown() {
-    const minutes = Math.floor(alertCheckCountdown / 60);
-    const seconds = alertCheckCountdown % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    const alertCheckEl = document.getElementById('next-alert-check');
-    if (alertCheckEl) {
-        alertCheckEl.textContent = `Alert Check: ${timeString}`;
-    }
-    
-    alertCheckCountdown--;
-    if (alertCheckCountdown < 0) {
-        console.log("15-minute warning check countdown reached zero - re-zooming to most severe warning");
-        alertCheckCountdown = 900;
-        
-        performPeriodicAlertCheck();
-    }
-}
-
-
 
 
 
@@ -336,21 +378,11 @@ function getAlertBBox(featureOrWrapper) {
     }
 }
 async function performPeriodicAlertCheck() {
-    // Prevent concurrent execution
-    if (_alertProcessingInProgress) {
-        console.log("[15min Check] Skipping - another alert sequence is already running");
-        return;
-    }
-    
-    _alertProcessingInProgress = true;
-    _userMovedMapDuringProcessing = false;
-    
     console.log(`[15min Check] Starting periodic warning check...`);
     console.log(`[15min Check] Active warnings count: ${activeWarnings.length}`);
     
     if (activeWarnings.length === 0) {
         console.log("[15min Check] No active warnings to re-zoom to");
-        _alertProcessingInProgress = false;
         return;
     }
     
@@ -364,7 +396,6 @@ async function performPeriodicAlertCheck() {
     
     if (warningsWithGeometry.length === 0) {
         console.log("[15min Check] No warnings have geometry data - cannot zoom");
-        _alertProcessingInProgress = false;
         return;
     }
     
@@ -391,7 +422,6 @@ async function performPeriodicAlertCheck() {
     
     if (viewportWarnings.length === 0) {
         console.log("[15min Check] No warnings in current viewport");
-        _alertProcessingInProgress = false;
         return;
     }
     
@@ -414,7 +444,7 @@ async function performPeriodicAlertCheck() {
             
             console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
             
-            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            console.log('🎯 [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
         map.fitBounds(bounds, { 
                 padding: 50, 
                 maxZoom: 10,
@@ -428,8 +458,7 @@ async function performPeriodicAlertCheck() {
             
             if (speechEnabled) {
                 const alertType = alert.properties?.event || 'Weather Alert';
-                const affectedAreas = alert.properties?.areaDesc || 'multiple areas';
-                const reminderText = `Reminder: ${alertType} for ${affectedAreas} is still in effect.`;
+                const reminderText = `Reminder: ${alertType} is still in effect.`;
                 console.log(`[15min Check] Speaking: ${reminderText}`);
                 await speakText(reminderText, 'periodic-check');
             }
@@ -441,20 +470,15 @@ async function performPeriodicAlertCheck() {
                 popup.remove();
             }
             
-            // Only zoom back if user hasn't manually moved the map
-            if (!_userMovedMapDuringProcessing) {
-                console.log(`[15min Check] Zooming BACK OUT to original position...`);
-                console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
-                map.flyTo({
-                    center: viewportCenter,
-                    zoom: viewportZoom,
-                    duration: 2000
-                });
-                
-                await new Promise(resolve => setTimeout(resolve, 2500));
-            } else {
-                console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
-            }
+            console.log(`[15min Check] Zooming BACK OUT to original position...`);
+            console.log('↩️ [Map] Returning to manual view at', new Date().toLocaleTimeString());
+        map.flyTo({
+                center: viewportCenter,
+                zoom: viewportZoom,
+                duration: 2000
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 2500));
             
             if (i < viewportWarnings.length - 1) {
                 console.log(`[15min Check] Waiting 15 seconds before next warning...`);
@@ -467,7 +491,6 @@ async function performPeriodicAlertCheck() {
     }
     
     console.log(`[15min Check] Complete - cycled through ${viewportWarnings.length} warnings`);
-    _alertProcessingInProgress = false;
 }
 
 
@@ -563,9 +586,9 @@ async function speakText(text, priority = 'normal') {
             
             if (naturalVoice) {
                 utterance.voice = naturalVoice;
-                console.log(`[voice] Using voice: ${naturalVoice.name}`);
+                console.log(`🎙️ Using voice: ${naturalVoice.name}`);
             } else {
-                console.log('[warn] Natural voice not found, using default browser voice');
+                console.log('⚠️ Natural voice not found, using default browser voice');
             }
             
             utterance.onend = () => resolve(true);
@@ -614,11 +637,7 @@ function setupCloseButtons() {
 function initializeMap() {
     console.log("Initializing Mapbox GL JS...");
     
-    const __mb_qp = new URLSearchParams(location.search);
-const __mb_token = (typeof MAPBOX_TOKEN !== 'undefined' && MAPBOX_TOKEN) || __mb_qp.get('mb') || localStorage.getItem('MAPBOX_TOKEN') || '';
-if (__mb_token) { localStorage.setItem('MAPBOX_TOKEN', __mb_token); }
-if (!__mb_token) { console.error('[map] Missing Mapbox token. Provide ?mb=pk.*** or set localStorage.MAPBOX_TOKEN'); }
-mapboxgl.accessToken = __mb_token;
+    mapboxgl.accessToken = MAPBOX_TOKEN;
     
     map = new mapboxgl.Map({
         container: 'map',
@@ -642,22 +661,6 @@ mapboxgl.accessToken = __mb_token;
     
     map.on('zoom', updateCountyVisibility);
     map.on('move', updateZoomDisplay);
-    
-    // Track user movements during alert processing
-    map.on('dragstart', () => {
-        if (_alertProcessingInProgress) {
-            console.log('[zoom-fix] User moved map during alert processing');
-            _userMovedMapDuringProcessing = true;
-        }
-    });
-    
-    map.on('zoomstart', (e) => {
-        // Only flag if it's a user-initiated zoom (not programmatic)
-        if (_alertProcessingInProgress && e.originalEvent) {
-            console.log('[zoom-fix] User zoomed map during alert processing');
-            _userMovedMapDuringProcessing = true;
-        }
-    });
 }
 
 async function addStateBorders() {
@@ -776,15 +779,6 @@ function updateCountyVisibility() {
 }
 
 async function handleNewAlerts(newAlerts) {
-    // Prevent concurrent execution
-    if (_alertProcessingInProgress) {
-        console.log("[Alert] Skipping - another alert sequence is already running");
-        return;
-    }
-    
-    _alertProcessingInProgress = true;
-    _userMovedMapDuringProcessing = false;
-    
     console.log(`Handling ${newAlerts.length} new alerts with speech-synchronized zoom`);
     
     const viewportCenter = map.getCenter();
@@ -803,7 +797,7 @@ async function handleNewAlerts(newAlerts) {
             console.log(`Processing alert ${i+1}/${newAlerts.length}: ${getAlertTitle(alert)}`);
             
             console.log("Zooming IN to alert...");
-            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            console.log('🎯 [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
         map.fitBounds(bounds, {
                 padding: 50,
                 maxZoom: 10,
@@ -837,20 +831,15 @@ async function handleNewAlerts(newAlerts) {
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
-            // Only zoom back if user hasn't manually moved the map
-            if (!_userMovedMapDuringProcessing) {
-                console.log("Zooming BACK OUT to viewport...");
-                console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
-                map.flyTo({
-                    center: viewportCenter,
-                    zoom: viewportZoom,
-                    duration: 2000
-                });
-                
-                await new Promise(resolve => setTimeout(resolve, 2500));
-            } else {
-                console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
-            }
+            console.log("Zooming BACK OUT to viewport...");
+            console.log('↩️ [Map] Returning to manual view at', new Date().toLocaleTimeString());
+        map.flyTo({
+                center: viewportCenter,
+                zoom: viewportZoom,
+                duration: 2000
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 2500));
             
             if (i < newAlerts.length - 1) {
                 await new Promise(resolve => setTimeout(resolve, 5000));
@@ -862,18 +851,17 @@ async function handleNewAlerts(newAlerts) {
     }
     
     console.log("Alert processing complete - speech synchronized");
-    _alertProcessingInProgress = false;
 }
 
 async function fetchAlerts() {
-    console.log('[warn] [Alerts] Fetching new alerts at', new Date().toLocaleTimeString());
+    console.log('⚠️ [Alerts] Fetching new alerts at', new Date().toLocaleTimeString());
     try {
         console.log("Fetching weather alerts...");
         
         let prioritizedAlerts = [];
         
         try {
-            const backendResponse = await fetch((BACKEND_BASE_URL || '') + '/api/weather/alerts', {
+            const backendResponse = await fetch(`${BACKEND_BASE_URL}/api/weather/alerts`, {
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json'
@@ -1098,7 +1086,7 @@ function addAlertsToMap(alerts) {
 async function fetchOutlooks() {
     try {
         console.log('Fetching weather outlooks...');
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/outlooks');
+        const response = await fetch(`${BACKEND_BASE_URL}/api/outlooks`);
         if (!response.ok) {
             console.warn('Outlooks API unavailable');
             return;
@@ -1199,7 +1187,7 @@ function showOutlookPopup(e, outlook) {
     popup.className = 'custom-outlook-popup';
     popup.style.cssText = `position: fixed;background: rgba(0,0,0,0.9);color: white;padding: 15px;border-radius: 8px;border: 2px solid ${color};min-width: 250px;max-width: 350px;z-index: 10000;box-shadow: 0 4px 12px rgba(0,0,0,0.5);font-family: Arial, sans-serif;`;
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = 'x';
+    closeBtn.innerHTML = '×';
     closeBtn.style.cssText = 'position: absolute;top: 8px;right: 8px;width: 24px;height: 24px;background: #ff6666;color: white;border: none;border-radius: 50%;cursor: pointer;font-size: 16px;font-weight: bold;z-index: 10001;';
     closeBtn.addEventListener('click', function(e) {e.preventDefault();e.stopPropagation();popup.remove();});
     const content = document.createElement('div');
@@ -1250,7 +1238,7 @@ function showAlertPopup(e, alert) {
     `;
     
     const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = 'x';
+    closeBtn.innerHTML = '×';
     closeBtn.style.cssText = `
         position: absolute;
         top: 8px;
@@ -1405,22 +1393,17 @@ function showAutoAlertPopup(alert) {
 
 function getAlertColor(eventType) {
     const eventColors = {
-        // WARNINGS - Red/Orange spectrum (most severe)
-        "Tornado Warning": "#FF0000",            // Red
-        "Severe Thunderstorm Warning": "#FFA500",// Orange
-        "Flash Flood Warning": "#8B0000",        // Dark Red
-        "Flood Warning": "#00CED1",              // Dark Turquoise
-        "Winter Storm Warning": "#FF69B4",       // Hot Pink
-        
-        // WATCHES - Blue/Orange spectrum (be prepared)
-        "Tornado Watch": "#FF8C00",              // Dark Orange (brighter than old gold)
-        "Severe Thunderstorm Watch": "#FFD700",  // Gold (more visible than yellow)
-        "Flash Flood Watch": "#00BFFF",          // Deep Sky Blue (instead of green)
-        "Flood Watch": "#87CEEB",                // Sky Blue (instead of pale green)
-        
-        // ADVISORIES & STATEMENTS
-        "Special Weather Statement": "#00BFFF",  // Deep Sky Blue (instead of gray)
-        "Winter Weather Advisory": "#DDA0DD"     // Plum
+        "Tornado Warning": "#FF0000",
+        "Tornado Watch": "#FFD700", 
+        "Severe Thunderstorm Warning": "#FFA500",
+        "Severe Thunderstorm Watch": "#FFFF00",
+        "Flash Flood Warning": "#8B0000",
+        "Flash Flood Watch": "#00FF00",
+        "Flood Warning": "#00CED1",
+        "Flood Watch": "#98FB98",
+        "Special Weather Statement": "#C0C0C0",
+        "Winter Storm Warning": "#FF69B4",
+        "Winter Weather Advisory": "#DDA0DD"
     };
     
     return eventColors[eventType] || '#808080';
@@ -1464,77 +1447,27 @@ async function speakHourlyBriefing() {
     console.log("=== HOURLY WEATHER BRIEFING ===");
     
     try {
-        // Fetch current weather from National Weather Service
-        // Using Huntsville International Airport weather station (KHSV)
-        const stationId = 'KHSV'; // Change this to your preferred weather station
-        const nwsUrl = `https://api.weather.gov/stations/${stationId}/observations/latest`;
-        
-        console.log(`Fetching weather from NWS station ${stationId}...`);
-        
-        const response = await fetch(nwsUrl, {
-            headers: {
-                'User-Agent': '(WeatherMap, contact@example.com)', // NWS requires User-Agent
-                'Accept': 'application/geo+json'
-            }
-        });
+        const response = await fetch(`${BACKEND_BASE_URL}/api/weather/forecast`);
         
         if (response.ok) {
             const data = await response.json();
-            const props = data.properties;
             
-            if (props) {
-                // Convert temperature from Celsius to Fahrenheit
-                const tempC = props.temperature?.value;
-                const tempF = tempC ? Math.round((tempC * 9/5) + 32) : null;
-                
-                // Get wind speed
-                const windSpeedMPS = props.windSpeed?.value;
-                const windSpeedMPH = windSpeedMPS ? Math.round(windSpeedMPS * 2.237) : null;
-                
-                // Get description
-                const description = props.textDescription || 'conditions unavailable';
-                
-                // Build briefing text
-                let briefingText = `Hourly weather briefing. `;
-                
-                if (tempF !== null) {
-                    briefingText += `Current temperature: ${tempF} degrees Fahrenheit. `;
-                }
-                
-                briefingText += `${description}. `;
-                
-                if (windSpeedMPH !== null && windSpeedMPH > 0) {
-                    const windDir = props.windDirection?.value;
-                    if (windDir) {
-                        const directions = ['North', 'Northeast', 'East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest'];
-                        const dirIndex = Math.round(windDir / 45) % 8;
-                        briefingText += `Wind ${directions[dirIndex]} at ${windSpeedMPH} miles per hour. `;
-                    } else {
-                        briefingText += `Wind speed: ${windSpeedMPH} miles per hour. `;
-                    }
-                } else {
-                    briefingText += `Winds are calm. `;
-                }
-                
-                // Add warnings count
-                briefingText += activeWarnings.length > 0 
-                    ? `There are ${activeWarnings.length} active warnings in effect.` 
-                    : 'No active warnings at this time.';
+            if (data.current) {
+                const briefingText = `Hourly weather briefing. Current conditions: ${data.current.temperature} degrees. ${data.current.shortForecast}. Wind speed: ${data.current.windSpeed || 'calm'}. ${activeWarnings.length > 0 ? `There are ${activeWarnings.length} active warnings in effect.` : 'No active warnings at this time.'}`;
                 
                 console.log("Speaking hourly briefing:", briefingText);
                 await speakText(briefingText, 'hourly-briefing');
             } else {
-                throw new Error('No properties in NWS response');
+                console.warn("No current weather data available for briefing");
             }
         } else {
-            throw new Error(`NWS API returned ${response.status}`);
+            console.warn("Backend unavailable for hourly briefing");
+            
+            const fallbackText = `Hourly weather briefing. Weather data currently unavailable. ${activeWarnings.length > 0 ? `There are ${activeWarnings.length} active warnings in effect.` : 'No active warnings at this time.'}`;
+            await speakText(fallbackText, 'hourly-briefing');
         }
     } catch (error) {
-        console.error("Error fetching weather from NWS:", error);
-        
-        // Fallback briefing with just warnings count
-        const fallbackText = `Hourly weather briefing. Weather data currently unavailable from National Weather Service. ${activeWarnings.length > 0 ? `There are ${activeWarnings.length} active warnings in effect.` : 'No active warnings at this time.'}`;
-        await speakText(fallbackText, 'hourly-briefing');
+        console.error("Error during hourly briefing:", error);
     }
 }
 
@@ -1591,7 +1524,7 @@ async function displayPredictions() {
     setTimeout(setupCloseButtons, 100);
     
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/ml/predictions');
+        const response = await fetch(`${BACKEND_BASE_URL}/api/ml/predictions`);
         
         if (!response.ok) {
             throw new Error(`Backend returned ${response.status}`);
@@ -1600,7 +1533,7 @@ async function displayPredictions() {
         const data = await response.json();
         
         let statusColor = data.model_trained ? '#88ff88' : '#ff8888';
-        let statusIcon = data.model_trained ? '[ok]' : '[err]';
+        let statusIcon = data.model_trained ? '✅' : '❌';
         
         let content = `
             <div style="padding: 12px; background: rgba(${data.model_trained ? '0,255,0' : '255,100,100'},0.15); border-radius: 6px; margin-bottom: 12px; border-left: 4px solid ${statusColor};">
@@ -1663,7 +1596,7 @@ async function displayPredictions() {
         // Update status panel
         const mlStatusEl = document.getElementById('ml-status');
         if (mlStatusEl) {
-            mlStatusEl.textContent = data.model_trained ? 'Trained [ok]' : 'Not Trained';
+            mlStatusEl.textContent = data.model_trained ? 'Trained ✅' : 'Not Trained';
             mlStatusEl.style.color = data.model_trained ? '#88ff88' : '#ff8888';
         }
         
@@ -1671,7 +1604,7 @@ async function displayPredictions() {
         console.error('Error loading ML predictions:', error);
         document.getElementById('predictions-content').innerHTML = `
             <div style="text-align: center; padding: 20px;">
-                <div style="color: #ff8888; margin-bottom: 10px;">[err] Error Loading Predictions</div>
+                <div style="color: #ff8888; margin-bottom: 10px;">❌ Error Loading Predictions</div>
                 <div style="color: #ffaaaa; font-size: 11px;">${error.message}</div>
                 <div style="color: #cccccc; font-size: 10px; margin-top: 10px;">
                     Make sure backend is running with ML integration
@@ -1685,11 +1618,11 @@ function displayPreferences() {
         <div style="margin: 8px 0; padding: 8px; background: rgba(0,255,0,0.1); border-radius: 4px;">
             <h6 style="margin: 0 0 4px 0; color: #88ff88;">Speech-Sync Features:</h6>
             <div style="font-size: 11px;">
-                <div>[ok] Map waits for speech completion</div>
-                <div>[ok] Proper promise handling</div>
-                <div>[ok] Azure TTS integration</div>
-                <div>[ok] Browser TTS fallback</div>
-                <div>[ok] 15-minute alert re-check</div>
+                <div>✅ Map waits for speech completion</div>
+                <div>✅ Proper promise handling</div>
+                <div>✅ Azure TTS integration</div>
+                <div>✅ Browser TTS fallback</div>
+                <div>✅ 15-minute alert re-check</div>
             </div>
         </div>
     `;
@@ -1706,7 +1639,7 @@ async function displayHistory() {
     document.getElementById('history-content').innerHTML = '<div style="text-align: center; padding: 20px;"><div style="color: #ffff88;">Loading weather history...</div></div>';
     setTimeout(setupCloseButtons, 100);
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/learning/history');
+        const response = await fetch(`${BACKEND_BASE_URL}/api/learning/history`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (data.history && data.history.length > 0) {
@@ -1762,7 +1695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     console.log("Testing backend connection...");
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/test');
+        const response = await fetch(`${BACKEND_BASE_URL}/api/test`);
         if (response.ok) {
             console.log("Backend connected successfully!");
             backendConnected = true;
@@ -1814,12 +1747,51 @@ document.getElementById('test-button').addEventListener('click', async () => {
     // setInterval(fetchOutlooks, 300000); // moved to scheduler
     // setInterval(updateWeatherDisplay, 5000); // moved to scheduler
     
-    // Initialize countdown displays
-    updateBriefingCountdown();
-    updateAlertCheckCountdown();
+    let briefingCountdown = 3600;
+  
     
-    // Start the main scheduler
-    startScheduler();
+    function updateBriefingCountdown() {
+        const minutes = Math.floor(briefingCountdown / 60);
+        const seconds = briefingCountdown % 60;
+        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        const briefingEl = document.getElementById('next-briefing');
+        if (briefingEl) {
+            briefingEl.textContent = `Next: ${timeString}`;
+        }
+        
+        briefingCountdown--;
+        if (briefingCountdown < 0) {
+            console.log("Hourly briefing countdown reached zero - triggering automated briefing");
+            briefingCountdown = 3600;
+            speakHourlyBriefing();
+        }
+    }
+    
+    updateBriefingCountdown();
+    // setInterval(updateBriefingCountdown, 1000); // moved to scheduler
+    
+    let alertCheckCountdown = 900;
+    
+    function updateAlertCheckCountdown() {
+        const minutes = Math.floor(alertCheckCountdown / 60);
+        const seconds = alertCheckCountdown % 60;
+        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        const alertCheckEl = document.getElementById('next-alert-check');
+        if (alertCheckEl) {
+            alertCheckEl.textContent = `Alert Check: ${timeString}`;
+        }
+        
+        alertCheckCountdown--;
+        if (alertCheckCountdown < 0) {
+            console.log("15-minute warning check countdown reached zero - re-zooming to most severe warning");
+            alertCheckCountdown = 900;
+            
+            performPeriodicAlertCheck();
+        }
+    }
+    
+    updateAlertCheckCountdown();
+    // setInterval(updateAlertCheckCountdown, 1000); // moved to scheduler
     
     console.log("Enhanced Mapbox Weather System ready - Speech synchronization FIXED + 15-min WARNING checks enabled!");
 });
@@ -1827,13 +1799,13 @@ document.getElementById('test-button').addEventListener('click', async () => {
 console.log("=".repeat(60));
 console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
 console.log("=".repeat(60));
-console.log("[ok] Map stays zoomed until speech completes");
-console.log("[ok] Proper Promise handling implemented");
-console.log("[ok] Azure TTS waits for audio completion");
-console.log("[ok] Browser TTS waits for audio completion");
-console.log("[ok] 15-minute periodic WARNING re-zoom enabled");
-console.log("[ok] Zooms to most severe active WARNING every 15 min");
-console.log("[ok] Voice reminder on re-zoom (if voice enabled)");
+console.log("✅ Map stays zoomed until speech completes");
+console.log("✅ Proper Promise handling implemented");
+console.log("✅ Azure TTS waits for audio completion");
+console.log("✅ Browser TTS waits for audio completion");
+console.log("✅ 15-minute periodic WARNING re-zoom enabled");
+console.log("✅ Zooms to most severe active WARNING every 15 min");
+console.log("✅ Voice reminder on re-zoom (if voice enabled)");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
@@ -1880,6 +1852,20 @@ async function classifyAlert(alert) {
         return { severe: false, probability: 0.0 };
     }
 }
+
+// === Performance: single scheduler tick ===
+function startScheduler() {
+    let t = 0;
+    setInterval(() => {
+        t++;
+        if (t % 15 === 0) { try { fetchAlerts(); } catch(e){} }        // 15s
+        if (t % 300 === 0) { try { fetchOutlooks(); } catch(e){} }     // 5 min
+        if (t % 5 === 0) { try { updateWeatherDisplay(); } catch(e){} } // 5s
+        try { updateBriefingCountdown(); } catch(e){}
+        try { updateAlertCheckCountdown(); } catch(e){}
+    }, 1000);
+}
+
 
 // Pause/resume light effects when tab is hidden (e.g., OBS scene switch)
 document.addEventListener('visibilitychange', () => {
