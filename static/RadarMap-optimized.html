@@ -1464,27 +1464,77 @@ async function speakHourlyBriefing() {
     console.log("=== HOURLY WEATHER BRIEFING ===");
     
     try {
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/weather/forecast');
+        // Fetch current weather from National Weather Service
+        // Using Huntsville International Airport weather station (KHSV)
+        const stationId = 'KHSV'; // Change this to your preferred weather station
+        const nwsUrl = `https://api.weather.gov/stations/${stationId}/observations/latest`;
+        
+        console.log(`Fetching weather from NWS station ${stationId}...`);
+        
+        const response = await fetch(nwsUrl, {
+            headers: {
+                'User-Agent': '(WeatherMap, contact@example.com)', // NWS requires User-Agent
+                'Accept': 'application/geo+json'
+            }
+        });
         
         if (response.ok) {
             const data = await response.json();
+            const props = data.properties;
             
-            if (data.current) {
-                const briefingText = `Hourly weather briefing. Current conditions: ${data.current.temperature} degrees. ${data.current.shortForecast}. Wind speed: ${data.current.windSpeed || 'calm'}. ${activeWarnings.length > 0 ? `There are ${activeWarnings.length} active warnings in effect.` : 'No active warnings at this time.'}`;
+            if (props) {
+                // Convert temperature from Celsius to Fahrenheit
+                const tempC = props.temperature?.value;
+                const tempF = tempC ? Math.round((tempC * 9/5) + 32) : null;
+                
+                // Get wind speed
+                const windSpeedMPS = props.windSpeed?.value;
+                const windSpeedMPH = windSpeedMPS ? Math.round(windSpeedMPS * 2.237) : null;
+                
+                // Get description
+                const description = props.textDescription || 'conditions unavailable';
+                
+                // Build briefing text
+                let briefingText = `Hourly weather briefing. `;
+                
+                if (tempF !== null) {
+                    briefingText += `Current temperature: ${tempF} degrees Fahrenheit. `;
+                }
+                
+                briefingText += `${description}. `;
+                
+                if (windSpeedMPH !== null && windSpeedMPH > 0) {
+                    const windDir = props.windDirection?.value;
+                    if (windDir) {
+                        const directions = ['North', 'Northeast', 'East', 'Southeast', 'South', 'Southwest', 'West', 'Northwest'];
+                        const dirIndex = Math.round(windDir / 45) % 8;
+                        briefingText += `Wind ${directions[dirIndex]} at ${windSpeedMPH} miles per hour. `;
+                    } else {
+                        briefingText += `Wind speed: ${windSpeedMPH} miles per hour. `;
+                    }
+                } else {
+                    briefingText += `Winds are calm. `;
+                }
+                
+                // Add warnings count
+                briefingText += activeWarnings.length > 0 
+                    ? `There are ${activeWarnings.length} active warnings in effect.` 
+                    : 'No active warnings at this time.';
                 
                 console.log("Speaking hourly briefing:", briefingText);
                 await speakText(briefingText, 'hourly-briefing');
             } else {
-                console.warn("No current weather data available for briefing");
+                throw new Error('No properties in NWS response');
             }
         } else {
-            console.warn("Backend unavailable for hourly briefing");
-            
-            const fallbackText = `Hourly weather briefing. Weather data currently unavailable. ${activeWarnings.length > 0 ? `There are ${activeWarnings.length} active warnings in effect.` : 'No active warnings at this time.'}`;
-            await speakText(fallbackText, 'hourly-briefing');
+            throw new Error(`NWS API returned ${response.status}`);
         }
     } catch (error) {
-        console.error("Error during hourly briefing:", error);
+        console.error("Error fetching weather from NWS:", error);
+        
+        // Fallback briefing with just warnings count
+        const fallbackText = `Hourly weather briefing. Weather data currently unavailable from National Weather Service. ${activeWarnings.length > 0 ? `There are ${activeWarnings.length} active warnings in effect.` : 'No active warnings at this time.'}`;
+        await speakText(fallbackText, 'hourly-briefing');
     }
 }
 
