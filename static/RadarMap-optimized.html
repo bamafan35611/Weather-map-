@@ -249,6 +249,14 @@ const RADAR_REFRESH_INTERVAL = OBS_MODE ? 300 : 120; // OBS: 5min, Normal: 2min
 const OUTLOOK_POLL_INTERVAL = 300;                    // 5 minutes (same for both)
 const WEATHER_UPDATE_INTERVAL = OBS_MODE ? 10 : 5;   // OBS: 10s, Normal: 5s
 
+// === Voice Relay System ===
+// Set to true to use Edge neural voices via local relay
+const USE_VOICE_RELAY = true;  // Change to false to use browser TTS directly
+const VOICE_RELAY_URL = 'ws://localhost:8765';  // Local relay server
+
+let voiceRelayWS = null;
+let voiceRelayConnected = false;
+
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
 const __api_qp = new URLSearchParams(location.search);
@@ -555,6 +563,24 @@ async function speakText(text, priority = 'normal') {
         .replace(/\bWY\b/g, 'Wyoming')
         .trim();
     
+    // Use voice relay if enabled and connected
+    if (USE_VOICE_RELAY && voiceRelayConnected && voiceRelayWS) {
+        try {
+            voiceRelayWS.send(JSON.stringify({
+                text: cleanText,
+                rate: 0.95,
+                voice: 'Andrew',  // Prefer Microsoft Andrew
+                priority: priority
+            }));
+            console.log(`[voice-relay] Sent to Edge: "${cleanText.substring(0, 50)}..."`);
+            return Promise.resolve(true);
+        } catch (error) {
+            console.error('[voice-relay] Send failed, falling back to browser TTS:', error);
+            // Fall through to browser TTS
+        }
+    }
+    
+    // Fallback to browser TTS
     return new Promise((resolve) => {
         if ('speechSynthesis' in window) {
             if (speechSynthesis.speaking && priority === 'alert') { speechSynthesis.cancel(); }
@@ -586,6 +612,56 @@ async function speakText(text, priority = 'normal') {
             resolve(false);
         }
     });
+}
+
+// Connect to voice relay server
+function connectVoiceRelay() {
+    if (!USE_VOICE_RELAY) {
+        console.log('[voice-relay] Relay disabled, using browser TTS');
+        return;
+    }
+
+    try {
+        console.log(`[voice-relay] Connecting to ${VOICE_RELAY_URL}...`);
+        voiceRelayWS = new WebSocket(VOICE_RELAY_URL);
+
+        voiceRelayWS.onopen = () => {
+            voiceRelayConnected = true;
+            console.log('[voice-relay] ✅ Connected to relay server');
+            
+            // Identify as OBS client
+            voiceRelayWS.send(JSON.stringify({
+                type: 'identify',
+                client: 'obs'
+            }));
+        };
+
+        voiceRelayWS.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.status === 'connected' && data.role === 'obs') {
+                    console.log('[voice-relay] Registered as OBS client');
+                }
+            } catch (error) {
+                console.error('[voice-relay] Message parse error:', error);
+            }
+        };
+
+        voiceRelayWS.onerror = (error) => {
+            voiceRelayConnected = false;
+            console.error('[voice-relay] WebSocket error - is relay server running?');
+        };
+
+        voiceRelayWS.onclose = () => {
+            voiceRelayConnected = false;
+            console.log('[voice-relay] Disconnected. Reconnecting in 5 seconds...');
+            setTimeout(connectVoiceRelay, 5000);
+        };
+    } catch (error) {
+        voiceRelayConnected = false;
+        console.error('[voice-relay] Connection failed:', error);
+        setTimeout(connectVoiceRelay, 5000);
+    }
 }
 
 
@@ -1766,6 +1842,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     initializeMap();
     initWeatherPanelToggle();
+    
+    // Connect to voice relay if enabled
+    if (USE_VOICE_RELAY) {
+        console.log("Initializing Edge voice relay system...");
+        connectVoiceRelay();
+    } else {
+        console.log("Using browser TTS (relay disabled)");
+    }
     
     console.log("Initializing Azure TTS...");
   
