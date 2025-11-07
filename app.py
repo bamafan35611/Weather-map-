@@ -5,6 +5,9 @@ from flask import Flask, send_from_directory, jsonify, request, Response
 from flask_cors import CORS
 from ml_bridge import get_ml_predictions  # Fetch ML from local PC
 
+# NEW: requests used to fetch NWS data
+import requests
+
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
@@ -51,14 +54,66 @@ def api_test():
 
 @app.get('/api/weather/alerts')
 def api_alerts():
-    # You can merge NWS + custom alerts here
-    return jsonify({'alerts': []})
+    """Return simplified alerts so the frontend marks them HIGH priority and renders polygons.
+    We proxy NWS active alerts but only pass through Tornado/Severe Thunderstorm WATCHES (the ones missing).
+    If you want *all* alerts, set env PASS_ALL_ALERTS=1.
+    """
+    NWS_URL = 'https://api.weather.gov/alerts/active'
+    headers = {
+        # NWS requires a UA with contact
+        'User-Agent': '(WeatherMap/1.0, contact: example@example.com)',
+        'Accept': 'application/geo+json'
+    }
+    try:
+        r = requests.get(NWS_URL, headers=headers, timeout=12)
+        r.raise_for_status()
+        gj = r.json() or {}
+        feats = gj.get('features', [])
+
+        pass_all = os.environ.get('PASS_ALL_ALERTS', '').strip() == '1'
+
+        WATCH_EVENTS = {
+            'tornado watch',
+            'severe thunderstorm watch'
+        }
+
+        out = []
+        for f in feats:
+            props = (f.get('properties') or {})
+            geom = f.get('geometry') or {}
+
+            # Require usable geometry (Polygon or MultiPolygon with coordinates)
+            if not geom or not geom.get('coordinates'):
+                continue
+
+            ev = (props.get('event') or '').strip()
+            ev_l = ev.lower()
+
+            # Filter unless PASS_ALL_ALERTS=1
+            if not pass_all and ev_l not in WATCH_EVENTS:
+                continue
+
+            # Normalize basic fields used by the frontend mapping step
+            out.append({
+                'id': props.get('id') or props.get('sent') or f.get('id'),
+                'event': ev or 'Weather Alert',
+                'headline': props.get('headline') or '',
+                'areaDesc': props.get('areaDesc') or '',
+                'description': props.get('description') or '',
+                'expires': props.get('expires') or props.get('ends') or '',
+                'geometry': geom
+            })
+
+        return jsonify({'alerts': out})
+    except Exception as e:
+        # Don't break frontend
+        return jsonify({'alerts': [], 'error': str(e)}), 200
 
 @app.get('/api/outlooks')
 def api_outlooks():
     """Return current SPC convective outlook polygons (categorical) as simple JSON
     the front-end already understands. No fake/demo boxes."""
-    import os, requests
+    import requests
 
     # Choose outlook day (1, 2, or 3). Default Day 1.
     day = int(os.environ.get("SPC_OUTLOOK_DAY", "1"))
@@ -122,6 +177,7 @@ def api_outlooks():
         })
 
     return jsonify({"outlooks": out})
+
 @app.get('/api/learning/history')
 def api_history():
     return jsonify({'count': 0, 'history': []})
