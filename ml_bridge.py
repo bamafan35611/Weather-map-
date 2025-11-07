@@ -49,6 +49,24 @@ def get_ml_predictions():
         if response.ok:
             data = response.json()
             
+            # Flatten the response for frontend compatibility
+            if data.get('success') and 'stats' in data:
+                stats = data['stats']
+                flattened = {
+                    'success': True,
+                    'model_trained': data.get('model_trained', stats.get('model_trained', False)),
+                    'forecasts': stats.get('total_forecasts', 0),
+                    'verified': stats.get('verified_forecasts', 0),
+                    'total_forecasts': stats.get('total_forecasts', 0),
+                    'verified_forecasts': stats.get('verified_forecasts', 0),
+                    'accuracy': stats.get('accuracy', {}),
+                    'by_risk_level': stats.get('by_risk_level', {}),
+                    'sklearn_available': stats.get('sklearn_available', True),
+                    'outlooks': data.get('outlooks', []),
+                    'timestamp': data.get('timestamp', '')
+                }
+                data = flattened
+            
             # Cache the successful response
             ml_cache['data'] = data
             ml_cache['timestamp'] = datetime.now()
