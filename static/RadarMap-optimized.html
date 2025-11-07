@@ -1227,6 +1227,9 @@ function addOutlooksToMap(outlooks) {
         paint: {
             'fill-color': ['match', ['get', 'risk_level'], 'MRGL', '#66ff66', 'SLGT', '#ffff00', 'ENH', '#ff9900', 'MDT', '#ff0000', 'HIGH', '#ff00ff', 'SLIGHT', '#66ccff', '#888888'],
             'fill-opacity': 0.2
+        },
+        layout: {
+            'visibility': outlooksVisible ? 'visible' : 'none'
         }
     });
     map.addLayer({
@@ -1237,6 +1240,9 @@ function addOutlooksToMap(outlooks) {
             'line-color': ['match', ['get', 'risk_level'], 'MRGL', '#66ff66', 'SLGT', '#ffff00', 'ENH', '#ff9900', 'MDT', '#ff0000', 'HIGH', '#ff00ff', 'SLIGHT', '#66ccff', '#888888'],
             'line-width': 2,
             'line-opacity': 0.6
+        },
+        layout: {
+            'visibility': outlooksVisible ? 'visible' : 'none'
         }
     });
     
