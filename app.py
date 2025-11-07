@@ -3,6 +3,7 @@ import glob
 import pickle
 from flask import Flask, send_from_directory, jsonify, request, Response
 from flask_cors import CORS
+from ml_bridge import get_ml_predictions  # Fetch ML from local PC
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -125,21 +126,26 @@ def api_outlooks():
 def api_history():
     return jsonify({'count': 0, 'history': []})
 
-@app.post('/api/ml/predictions')
+@app.get('/api/ml/predictions')
 def api_predictions():
-    model = _load_model_once()
-    if model is None:
-        return jsonify({
-            'model_trained': False,
-            'total_forecasts': 0,
-            'verified_forecasts': 0,
-            'accuracy': {},
-            'note': 'No model loaded. Place a .pkl in /models or implement your own loader.'
-        })
+    """Fetch ML predictions from local PC via ngrok"""
+    data = get_ml_predictions()
+    
+    if data.get('success'):
+        return jsonify(data)
+    else:
+        # Return error but don't break frontend
+        return jsonify(data), 200
+
+@app.get('/api/ml/status')
+def api_ml_status():
+    """Check if local ML connection is configured"""
+    local_ml_url = os.environ.get('LOCAL_ML_URL', '')
+    
     return jsonify({
-        'model_trained': True,
-        'model_path': _model_path,
-        'message': 'Model is loaded. Implement real inference here.'
+        'configured': bool(local_ml_url),
+        'url': local_ml_url if local_ml_url else 'Not set',
+        'message': 'Local ML is configured' if local_ml_url else 'Set LOCAL_ML_URL in Render environment variables'
     })
 
 # ----------------------------------------------------------------------
