@@ -1940,14 +1940,17 @@ console.log("=".repeat(60));
 function startScheduler() {
     let t = 0;
     setInterval(() => {
-        // Only run if page is visible (not hidden in background)
-        if (document.hidden && OBS_MODE) {
-            return; // Skip all updates when tab is hidden in OBS mode
-        }
-        
         t++;
+        
+        // Always fetch data regardless of visibility
         if (t % ALERT_POLL_INTERVAL === 0) { try { fetchAlerts(); } catch(e){} }
         if (t % OUTLOOK_POLL_INTERVAL === 0) { try { fetchOutlooks(); } catch(e){} }
+        
+        // Skip visual updates if page is hidden in OBS mode
+        if (document.hidden && OBS_MODE) {
+            return;
+        }
+        
         if (t % WEATHER_UPDATE_INTERVAL === 0) { try { updateWeatherDisplay(); } catch(e){} }
         try { updateBriefingCountdown(); } catch(e){}
         try { updateAlertCheckCountdown(); } catch(e){}
