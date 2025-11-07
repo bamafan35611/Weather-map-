@@ -1866,8 +1866,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (response.ok) {
             console.log("Backend connected successfully!");
             backendConnected = true;
-            await fetchAlerts();
-            fetchOutlooks();
         } else {
             throw new Error('Backend test failed');
         }
@@ -1875,6 +1873,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log("Backend connection failed - using offline mode");
         backendConnected = false;
     }
+    
+    // Always fetch alerts and outlooks regardless of backend status
+    await fetchAlerts();
+    fetchOutlooks();
     
     updateWeatherDisplay();
     
@@ -1889,8 +1891,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     updateWeatherDisplay();
-
-    startScheduler();
 });
     
 document.getElementById('analytics-button').addEventListener('click', displayAnalytics);
