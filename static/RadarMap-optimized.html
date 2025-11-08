@@ -98,7 +98,8 @@ header {
 #preferences-button { top: 550px; }
 #history-button { top: 590px; }
 #outlooks-button { top: 630px; background: rgba(100,200,255,0.2); border-color: #64c8ff; color: #64c8ff; }
-#test-button { top: 670px; background: rgba(255,255,0,0.2); color: #ffff00; }#toggle-briefing-button { top: 390px; background: rgba(0,0,0,0.2); border-color: #ffffff; color: #ffffff; }
+#watches-button { top: 670px; background: rgba(255,200,100,0.2); border-color: #ffc864; color: #ffc864; }
+#test-button { top: 710px; background: rgba(255,255,0,0.2); color: #ffff00; }#toggle-briefing-button { top: 390px; background: rgba(0,0,0,0.2); border-color: #ffffff; color: #ffffff; }
 
 .connection-status {
   position: fixed;
@@ -199,6 +200,7 @@ header {
 <div class="action-button" id="preferences-button">Preferences</div>
 <div class="action-button" id="history-button">History</div>
 <div class="action-button" id="outlooks-button">Outlooks: ON</div>
+<div class="action-button" id="watches-button">Watches: ON</div>
 <div class="action-button" id="test-button">Test Backend</div>
 
 <div class="interactive-panel" id="analytics-panel">
@@ -274,6 +276,10 @@ const maxRetries = 5;
 const readAlerts = new Set();
 let countyLayerVisible = false;
 let outlooksVisible = true;
+let watchesVisible = true;
+
+// Zone geometry cache to avoid repeated API calls
+const zoneGeometryCache = new Map();
 
 let activeWarnings = [];
 let allActiveAlerts = [];
@@ -1104,29 +1110,245 @@ async function fetchAlerts() {
         console.log(`[DEBUG] Mappable alerts after filtering: ${mappableAlerts.length}`);
         console.log(`[DEBUG] Alerts filtered out: ${allAlerts.length - mappableAlerts.length}`);
         
-        // Check watches specifically
+        // Check watches specifically - they are handled separately with zone geometry
         const allWatches = allAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch'));
-        const mappableWatches = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch'));
-        console.log(`[DEBUG] Total watches: ${allWatches.length}, Mappable watches: ${mappableWatches.length}`);
-        
-        if (allWatches.length > 0 && mappableWatches.length === 0) {
-            console.log('[DEBUG] Watches have invalid geometry! Checking first watch:');
-            const firstWatch = allWatches[0];
-            console.log('[DEBUG] Watch event:', firstWatch.properties.event);
-            console.log('[DEBUG] Watch geometry type:', firstWatch.geometry?.type);
-            console.log('[DEBUG] Watch has coordinates:', !!firstWatch.geometry?.coordinates);
-            console.log('[DEBUG] Watch coordinates length:', firstWatch.geometry?.coordinates?.length);
-            console.log('[DEBUG] First coordinate element:', firstWatch.geometry?.coordinates?.[0]);
-            console.log('[DEBUG] Full geometry object:', JSON.stringify(firstWatch.geometry, null, 2));
-        }
+        const watchesWithGeometry = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch'));
+        const watchesWithoutGeometry = allWatches.length - watchesWithGeometry.length;
+        console.log(`[DEBUG] Total watches: ${allWatches.length}, With geometry: ${watchesWithGeometry.length}, Without geometry: ${watchesWithoutGeometry} (will be processed with zones)`);
         
         const highPriorityCount = mappableAlerts.filter(a => a.properties.priority === 'HIGH').length;
-        const watchCount = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch')).length;
-        document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.length} (${highPriorityCount} priority, ${watchCount} watches)`;
+        const warningCount = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('warning')).length;
+        document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.length} (${highPriorityCount} priority, ${warningCount} warnings)`;
         
     } catch (error) {
         console.error("Error fetching alerts:", error);
         document.getElementById('alerts-count').textContent = `Alerts: Error`;
+    }
+}
+
+// === WATCH ZONE GEOMETRY PROCESSING ===
+
+async function fetchZoneGeometry(zoneId) {
+    // Check cache first
+    if (zoneGeometryCache.has(zoneId)) {
+        return zoneGeometryCache.get(zoneId);
+    }
+    
+    try {
+        const response = await fetch(`https://api.weather.gov/zones/forecast/${zoneId}`, {
+            headers: {'Accept': 'application/geo+json'},
+            timeout: 5000
+        });
+        
+        if (!response.ok) {
+            console.warn(`Failed to fetch zone ${zoneId}: ${response.status}`);
+            return null;
+        }
+        
+        const data = await response.json();
+        const geometry = data.geometry;
+        
+        // Cache the geometry
+        zoneGeometryCache.set(zoneId, geometry);
+        return geometry;
+    } catch (error) {
+        console.warn(`Error fetching zone ${zoneId}:`, error.message);
+        return null;
+    }
+}
+
+async function processWatchesWithZones(alerts) {
+    // Filter watches without geometry
+    const watchesWithoutGeometry = alerts.filter(a => 
+        (a.properties.event || '').toLowerCase().includes('watch') && !a.geometry
+    );
+    
+    if (watchesWithoutGeometry.length === 0) {
+        console.log('No watches need zone geometry processing');
+        return [];
+    }
+    
+    console.log(`Processing ${watchesWithoutGeometry.length} watches with zone codes...`);
+    
+    const processedWatches = [];
+    
+    for (const watch of watchesWithoutGeometry) {
+        try {
+            // Get UGC codes from geocode field
+            const ugcCodes = watch.properties.geocode?.UGC || [];
+            
+            if (ugcCodes.length === 0) {
+                console.warn('Watch has no UGC codes:', watch.properties.event);
+                continue;
+            }
+            
+            console.log(`Fetching ${ugcCodes.length} zones for ${watch.properties.event}`);
+            
+            // Fetch geometries for all zones (limit to first 20 to avoid overwhelming API)
+            const zonesToFetch = ugcCodes.slice(0, 20);
+            const geometries = await Promise.all(
+                zonesToFetch.map(zoneId => fetchZoneGeometry(zoneId))
+            );
+            
+            // Filter out null geometries
+            const validGeometries = geometries.filter(g => g !== null);
+            
+            if (validGeometries.length === 0) {
+                console.warn('No valid geometries found for watch');
+                continue;
+            }
+            
+            // Combine all zone geometries into a MultiPolygon
+            const allCoordinates = [];
+            validGeometries.forEach(geom => {
+                if (geom.type === 'Polygon') {
+                    allCoordinates.push(geom.coordinates);
+                } else if (geom.type === 'MultiPolygon') {
+                    geom.coordinates.forEach(poly => allCoordinates.push(poly));
+                }
+            });
+            
+            const combinedGeometry = {
+                type: 'MultiPolygon',
+                coordinates: allCoordinates
+            };
+            
+            // Create new watch feature with geometry
+            processedWatches.push({
+                type: 'Feature',
+                properties: watch.properties,
+                geometry: combinedGeometry
+            });
+            
+            console.log(`✓ Processed ${watch.properties.event} with ${validGeometries.length} zones`);
+            
+        } catch (error) {
+            console.error('Error processing watch:', error);
+        }
+    }
+    
+    console.log(`Successfully processed ${processedWatches.length} watches`);
+    return processedWatches;
+}
+
+async function fetchAndDisplayWatches() {
+    try {
+        console.log('Fetching watches for zone geometry processing...');
+        
+        const response = await fetch('https://api.weather.gov/alerts/active', {
+            headers: {'Accept': 'application/geo+json'},
+            timeout: 10000
+        });
+        
+        if (!response.ok) {
+            throw new Error(`NWS API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const allAlerts = data.features || [];
+        
+        // Process watches and get geometries
+        const processedWatches = await processWatchesWithZones(allAlerts);
+        
+        // Add watches to map
+        if (processedWatches.length > 0) {
+            addWatchesToMap(processedWatches);
+        }
+        
+    } catch (error) {
+        console.error('Error fetching/displaying watches:', error);
+    }
+}
+
+function addWatchesToMap(watches) {
+    // Remove existing watch layers
+    if (map.getLayer('watch-fills')) map.removeLayer('watch-fills');
+    if (map.getLayer('watch-borders')) map.removeLayer('watch-borders');
+    if (map.getSource('watches')) map.removeSource('watches');
+    
+    // Add watch features with proper properties
+    const watchFeatures = watches.map(watch => ({
+        type: 'Feature',
+        properties: {
+            ...watch.properties,
+            color: getAlertColor(watch.properties.event),
+            isWatch: true
+        },
+        geometry: watch.geometry
+    }));
+    
+    const watchesGeoJSON = {
+        type: 'FeatureCollection',
+        features: watchFeatures
+    };
+    
+    // Add source
+    map.addSource('watches', {
+        type: 'geojson',
+        data: watchesGeoJSON
+    });
+    
+    // Add fill layer
+    map.addLayer({
+        id: 'watch-fills',
+        type: 'fill',
+        source: 'watches',
+        paint: {
+            'fill-color': ['get', 'color'],
+            'fill-opacity': 0.2
+        },
+        layout: {
+            'visibility': watchesVisible ? 'visible' : 'none'
+        }
+    });
+    
+    // Add border layer
+    map.addLayer({
+        id: 'watch-borders',
+        type: 'line',
+        source: 'watches',
+        paint: {
+            'line-color': ['get', 'color'],
+            'line-width': 2,
+            'line-opacity': 0.7
+        },
+        layout: {
+            'visibility': watchesVisible ? 'visible' : 'none'
+        }
+    });
+    
+    // Add click handler for watch popups
+    if (!map._watchClickBound) {
+        map.on('click', 'watch-fills', (e) => {
+            const watch = e.features[0].properties;
+            showAlertPopup(e, watch);
+        });
+        map.on('mouseenter', 'watch-fills', () => { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', 'watch-fills', () => { map.getCanvas().style.cursor = ''; });
+        map._watchClickBound = true;
+    }
+    
+    console.log(`Added ${watchFeatures.length} watches to map`);
+}
+
+function toggleWatches() {
+    watchesVisible = !watchesVisible;
+    const btn = document.getElementById('watches-button');
+    
+    if (watchesVisible) {
+        btn.textContent = 'Watches: ON';
+        btn.style.backgroundColor = 'rgba(255,200,100,0.2)';
+        if (map.getLayer('watch-fills')) {
+            map.setLayoutProperty('watch-fills', 'visibility', 'visible');
+            map.setLayoutProperty('watch-borders', 'visibility', 'visible');
+        }
+    } else {
+        btn.textContent = 'Watches: OFF';
+        btn.style.backgroundColor = 'rgba(255,100,100,0.2)';
+        if (map.getLayer('watch-fills')) {
+            map.setLayoutProperty('watch-fills', 'visibility', 'none');
+            map.setLayoutProperty('watch-borders', 'visibility', 'none');
+        }
     }
 }
 
@@ -1900,6 +2122,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Always fetch alerts and outlooks regardless of backend status
     await fetchAlerts();
     fetchOutlooks();
+    fetchAndDisplayWatches();
     
     updateWeatherDisplay();
     
@@ -1921,6 +2144,7 @@ document.getElementById('predictions-button').addEventListener('click', displayP
 document.getElementById('preferences-button').addEventListener('click', displayPreferences);
 document.getElementById('history-button').addEventListener('click', displayHistory);
 document.getElementById('outlooks-button').addEventListener('click', toggleOutlooks);
+document.getElementById('watches-button').addEventListener('click', toggleWatches);
     
 document.getElementById('test-button').addEventListener('click', async () => {
 
@@ -1967,7 +2191,10 @@ function startScheduler() {
         
         // Always fetch data regardless of visibility
         if (t % ALERT_POLL_INTERVAL === 0) { try { fetchAlerts(); } catch(e){} }
-        if (t % OUTLOOK_POLL_INTERVAL === 0) { try { fetchOutlooks(); } catch(e){} }
+        if (t % OUTLOOK_POLL_INTERVAL === 0) { 
+            try { fetchOutlooks(); } catch(e){} 
+            try { fetchAndDisplayWatches(); } catch(e){} 
+        }
         
         // Skip visual updates if page is hidden in OBS mode
         if (document.hidden && OBS_MODE) {
