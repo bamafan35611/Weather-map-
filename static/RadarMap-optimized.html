@@ -1099,7 +1099,28 @@ async function fetchAlerts() {
             console.log("No new alerts in current viewport to process");
         }
         
+        console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
         const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
+        console.log(`[DEBUG] Mappable alerts after filtering: ${mappableAlerts.length}`);
+        console.log(`[DEBUG] Alerts filtered out: ${allAlerts.length - mappableAlerts.length}`);
+        
+        // Check watches specifically
+        const allWatches = allAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch'));
+        const mappableWatches = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch'));
+        console.log(`[DEBUG] Total watches: ${allWatches.length}, Mappable watches: ${mappableWatches.length}`);
+        
+        if (allWatches.length > 0 && mappableWatches.length === 0) {
+            console.log('[DEBUG] Watches have invalid geometry! Checking first watch:');
+            const firstWatch = allWatches[0];
+            console.log('[DEBUG] Watch geometry:', {
+                hasGeometry: !!firstWatch.geometry,
+                geometryType: firstWatch.geometry?.type,
+                hasCoords: !!firstWatch.geometry?.coordinates,
+                coordsLength: firstWatch.geometry?.coordinates?.length,
+                event: firstWatch.properties.event
+            });
+        }
+        
         const highPriorityCount = mappableAlerts.filter(a => a.properties.priority === 'HIGH').length;
         const watchCount = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch')).length;
         document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.length} (${highPriorityCount} priority, ${watchCount} watches)`;
