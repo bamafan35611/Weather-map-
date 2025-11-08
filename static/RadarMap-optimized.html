@@ -709,8 +709,8 @@ mapboxgl.accessToken = __mb_token;
     map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/dark-v10',
-        center: [-98.0, 39.5],  // Center of continental US
-        zoom: 4.5,              // Zoom level to see entire country
+        center: [-86.7816, 34.7304],
+        zoom: 7.5,
         projection: 'mercator'
     });
     
@@ -1099,21 +1099,7 @@ async function fetchAlerts() {
         
         const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
         const highPriorityCount = mappableAlerts.filter(a => a.properties.priority === 'HIGH').length;
-        const watchCount = mappableAlerts.filter(a => a.properties.event.toLowerCase().includes('watch')).length;
-        
-        // Debug watches specifically
-        const allWatches = allAlerts.filter(a => a.properties.event.toLowerCase().includes('watch'));
-        console.log(`[DEBUG] Watches in all alerts: ${allWatches.length}`);
-        console.log(`[DEBUG] Watches with valid geometry: ${watchCount}`);
-        allWatches.slice(0, 3).forEach((w, i) => {
-            console.log(`[DEBUG] Watch ${i+1}:`, {
-                event: w.properties.event,
-                hasGeometry: !!w.geometry,
-                coordsLength: w.geometry?.coordinates?.length,
-                geometryType: w.geometry?.type
-            });
-        });
-        
+        const watchCount = mappableAlerts.filter(a => (a.properties.event || '').toLowerCase().includes('watch')).length;
         document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.length} (${highPriorityCount} priority, ${watchCount} watches)`;
         
     } catch (error) {
