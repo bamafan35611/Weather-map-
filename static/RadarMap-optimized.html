@@ -236,10 +236,8 @@ function getAlertTitle(alert) {
 console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
 // === Performance: toggle logs ===
-// DEBUG LOGS ENABLED (noisy mode)
-const DEBUG_LOGS = true;
-console.log('[DEBUG] Verbose logging enabled');
-
+const DEBUG_LOGS = false;
+if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
 
 // === Performance: OBS Optimization Mode ===
 // Set to true for better performance when running in OBS
@@ -711,8 +709,8 @@ mapboxgl.accessToken = __mb_token;
     map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/dark-v10',
-        center: [-86.7816, 34.7304],
-        zoom: 7.5,
+        center: [-98.0, 39.5],  // Center of continental US
+        zoom: 4.5,              // Zoom level to see entire country
         projection: 'mercator'
     });
     
@@ -1100,8 +1098,23 @@ async function fetchAlerts() {
         }
         
         const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
-const highPriorityCount = mappableAlerts.filter(a => a.properties.priority === 'HIGH').length;
-document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.length} (${highPriorityCount} priority)`;
+        const highPriorityCount = mappableAlerts.filter(a => a.properties.priority === 'HIGH').length;
+        const watchCount = mappableAlerts.filter(a => a.properties.event.toLowerCase().includes('watch')).length;
+        
+        // Debug watches specifically
+        const allWatches = allAlerts.filter(a => a.properties.event.toLowerCase().includes('watch'));
+        console.log(`[DEBUG] Watches in all alerts: ${allWatches.length}`);
+        console.log(`[DEBUG] Watches with valid geometry: ${watchCount}`);
+        allWatches.slice(0, 3).forEach((w, i) => {
+            console.log(`[DEBUG] Watch ${i+1}:`, {
+                event: w.properties.event,
+                hasGeometry: !!w.geometry,
+                coordsLength: w.geometry?.coordinates?.length,
+                geometryType: w.geometry?.type
+            });
+        });
+        
+        document.getElementById('alerts-count').textContent = `Alerts: ${mappableAlerts.length} (${highPriorityCount} priority, ${watchCount} watches)`;
         
     } catch (error) {
         console.error("Error fetching alerts:", error);
