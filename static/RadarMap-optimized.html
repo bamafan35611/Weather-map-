@@ -236,8 +236,10 @@ function getAlertTitle(alert) {
 console.log("Starting Mapbox Weather Intelligence - Speech Sync Fixed + 15min Alert Check");
 
 // === Performance: toggle logs ===
-const DEBUG_LOGS = false;
-if (!DEBUG_LOGS) { console.log = () => {}; console.warn = () => {}; }
+// DEBUG LOGS ENABLED (noisy mode)
+const DEBUG_LOGS = true;
+console.log('[DEBUG] Verbose logging enabled');
+
 
 // === Performance: OBS Optimization Mode ===
 // Set to true for better performance when running in OBS
