@@ -1112,13 +1112,12 @@ async function fetchAlerts() {
         if (allWatches.length > 0 && mappableWatches.length === 0) {
             console.log('[DEBUG] Watches have invalid geometry! Checking first watch:');
             const firstWatch = allWatches[0];
-            console.log('[DEBUG] Watch geometry:', {
-                hasGeometry: !!firstWatch.geometry,
-                geometryType: firstWatch.geometry?.type,
-                hasCoords: !!firstWatch.geometry?.coordinates,
-                coordsLength: firstWatch.geometry?.coordinates?.length,
-                event: firstWatch.properties.event
-            });
+            console.log('[DEBUG] Watch event:', firstWatch.properties.event);
+            console.log('[DEBUG] Watch geometry type:', firstWatch.geometry?.type);
+            console.log('[DEBUG] Watch has coordinates:', !!firstWatch.geometry?.coordinates);
+            console.log('[DEBUG] Watch coordinates length:', firstWatch.geometry?.coordinates?.length);
+            console.log('[DEBUG] First coordinate element:', firstWatch.geometry?.coordinates?.[0]);
+            console.log('[DEBUG] Full geometry object:', JSON.stringify(firstWatch.geometry, null, 2));
         }
         
         const highPriorityCount = mappableAlerts.filter(a => a.properties.priority === 'HIGH').length;
