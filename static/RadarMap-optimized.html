@@ -453,9 +453,7 @@ async function performPeriodicAlertCheck() {
             const popup = showAutoAlertPopup(alert);
             
             if (speechEnabled) {
-                const alertType = alert.properties?.event || 'Weather Alert';
-                const affectedAreas = alert.properties?.areaDesc || 'multiple areas';
-                const reminderText = `Reminder: ${alertType} for ${affectedAreas} is still in effect.`;
+                const reminderText = buildAlertSpeech(alert, { reminder: true, maxAreas: 2 });
                 console.log(`[15min Check] Speaking: ${reminderText}`);
                 await speakText(reminderText, 'periodic-check');
             }
@@ -869,6 +867,105 @@ function updateCountyVisibility() {
     }
 }
 
+
+function buildAlertSpeech(alertFeature, options = {}) {
+    const p = (alertFeature && alertFeature.properties) ? alertFeature.properties : (alertFeature || {});
+
+    const event = p.event || 'weather alert';
+    const priority = (p.priority || '').toLowerCase();
+    const isWarning = !!p.isWarning || /warning/i.test(event);
+    const isWatch = /watch/i.test(event);
+
+    // Trim area list – don’t read 20 counties
+    let areas = (p.areaDesc || '').split(';')
+        .map(s => s.trim())
+        .filter(Boolean);
+    const maxAreas = options.maxAreas || 3;
+    let areaText = '';
+    if (areas.length > 0) {
+        const shown = areas.slice(0, maxAreas);
+        areaText = shown.join(', ');
+        if (areas.length > maxAreas) {
+            areaText += ', and surrounding areas';
+        }
+    }
+
+    // Expiration time → “until 6:45 PM”
+    const expiresIso = p.expires || p.ends;
+    let timeText = '';
+    if (expiresIso) {
+        try {
+            const t = new Date(expiresIso);
+            const tStr = t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            timeText = ` until about ${tStr}`;
+        } catch (e) {
+            console.warn('[speech] Failed to parse expiration time:', e);
+        }
+    }
+
+    // Lead-in style
+    let intro;
+    if (isWarning) {
+        intro = `We have a ${event} in effect`;
+    } else if (isWatch) {
+        intro = `A ${event} has been issued`;
+    } else if (priority === 'high') {
+        intro = `A high-priority ${event} is in effect`;
+    } else {
+        intro = `There is a ${event} in effect`;
+    }
+
+    if (areaText) {
+        intro += ` for ${areaText}`;
+    }
+    if (timeText) {
+        intro += timeText;
+    }
+    intro += '.';
+
+    // Pull a tiny bit of the description for hazards
+    const desc = (p.description || p.headline || '').toLowerCase();
+    let hazards = [];
+    if (desc.includes('tornado')) {
+        hazards.push('tornadoes are possible');
+    }
+    if (desc.includes('flash flooding')) {
+        hazards.push('flash flooding is a concern');
+    }
+    if (desc.includes('hail')) {
+        hazards.push('large hail is possible');
+    }
+    if (desc.match(/(60|70|80)\s?mph/)) {
+        hazards.push('damaging straight-line winds are likely');
+    }
+
+    let hazardText = '';
+    if (hazards.length > 0) {
+        hazardText = ' Hazards include ' + hazards.join(' and ') + '.';
+    }
+
+    // Call-to-action based on severity
+    let action = '';
+    if (isWarning) {
+        action = ' If you are in the warned area, move indoors and stay away from windows. Be prepared to act quickly if conditions worsen.';
+    } else if (isWatch) {
+        action = ' Stay weather aware and be ready to take action if warnings are issued.';
+    } else if (priority === 'high') {
+        action = ' Monitor the weather closely and follow instructions from local officials.';
+    }
+
+    // “Reminder mode” tweak
+    if (options.reminder) {
+        return ('Reminder: ' + intro + hazardText + ' ' + action)
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    return (intro + hazardText + ' ' + action)
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 async function handleNewAlerts(newAlerts) {
     // Prevent concurrent execution
     if (_alertProcessingInProgress) {
@@ -910,15 +1007,15 @@ async function handleNewAlerts(newAlerts) {
             const popup = showAutoAlertPopup(alert);
             
             if (speechEnabled) {
-                let alertText = `${alert.properties.priority} priority ${alert.properties.event} for ${alert.properties.areaDesc}. ${(alert.properties.description || alert.properties.headline || '').substring(0, 150)}`;
-                
+                const alertSpeech = buildAlertSpeech(alert);
                 console.log("Speaking alert - map will stay zoomed for 30 seconds...");
-                
-                speakText(alertText, 'alert');
-                
+
+                // Fire and forget so zoom timing stays consistent
+                speakText(alertSpeech, 'alert');
+
                 console.log("Holding zoom for 30 seconds...");
                 await new Promise(resolve => setTimeout(resolve, 30000));
-                
+
                 console.log("30 seconds complete - now zooming out...");
             } else {
                 console.log("Speech disabled - holding zoom for 8 seconds...");
