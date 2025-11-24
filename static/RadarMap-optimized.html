@@ -883,7 +883,7 @@ function buildAlertSpeech(alertFeature, options = {}) {
     const isSevereTStorm = /severe thunderstorm/.test(lowerEvent);
     const isFlashFlood = /flash flood/.test(lowerEvent);
 
-    // --- Areas: keep it short so it sounds natural ---
+    // --- Area list: counties/zones, but trimmed ---
     let areas = (p.areaDesc || '').split(';')
         .map(s => s.trim())
         .filter(Boolean);
@@ -912,15 +912,42 @@ function buildAlertSpeech(alertFeature, options = {}) {
         }
     }
 
-    // --- Extract motion phrase from description: "moving east at 45 mph" ---
     const descRaw = (p.description || p.headline || '');
     const desc = descRaw.toLowerCase();
+
+    // --- Motion phrase: "moving east at 45 mph" ---
     let motionText = '';
-    const motionMatch = desc.match(/moving\s+([a-z\s]+?)\s+at\s+(\d{1,3})\s?mph/);
+    const motionMatch = desc.match(/moving\\s+([a-z\\s]+?)\\s+at\\s+(\\d{1,3})\\s?mph/);
     if (motionMatch) {
         const dir = motionMatch[1].trim();
         const mph = motionMatch[2];
         motionText = ` The storm is moving ${dir} at around ${mph} miles per hour.`;
+    }
+
+    // --- Towns / communities from NWS text ---
+    // Looks for "Locations impacted include ..." or "Cities impacted include ..."
+    let communityText = '';
+    try {
+        const locMatch = descRaw.match(/(?:locations|cities)\\s+impacted\\s+include\\s+([^\\.\\n]+)/i);
+        if (locMatch && locMatch[1]) {
+            let rawList = locMatch[1]
+                .replace(/\\s+and\\s+/gi, ', ')
+                .replace(/\\s*\\.+$/, '');
+            let parts = rawList.split(/,|;/)
+                .map(s => s.trim())
+                .filter(Boolean);
+            const maxTowns = Number.isFinite(options.maxTowns) ? options.maxTowns : 4;
+            if (parts.length > 0) {
+                const show = parts.slice(0, maxTowns);
+                communityText = ' This includes the communities of ' + show.join(', ');
+                if (parts.length > maxTowns) {
+                    communityText += ', and nearby areas';
+                }
+                communityText += '.';
+            }
+        }
+    } catch (e) {
+        console.warn('[speech] community parse failed:', e);
     }
 
     // --- Hazards from description ---
@@ -938,20 +965,18 @@ function buildAlertSpeech(alertFeature, options = {}) {
         hazards.push('flooding');
     }
 
-    // Hail size
-    const hailMatch = desc.match(/((golf ball|ping pong ball|half dollar|quarter)\s+size\s+hail|[0-9/.]+\s?(inch|in)\s+hail)/);
+    const hailMatch = desc.match(/((golf ball|ping pong ball|half dollar|quarter)\\s+size\\s+hail|[0-9/.]+\\s?(inch|in)\\s+hail)/);
     if (hailMatch) {
         hazards.push('large hail');
     } else if (desc.includes('hail')) {
         hazards.push('hail');
     }
 
-    // Wind speed
-    const windMatch = desc.match(/(\d{2,3})\s?mph\s+winds?/);
+    const windMatch = desc.match(/(\\d{2,3})\\s?mph\\s+winds?/);
     if (windMatch) {
         const speed = windMatch[1];
         hazards.push(`damaging winds around ${speed} miles per hour`);
-    } else if (desc.match(/(60|70|80)\s?mph/)) {
+    } else if (desc.match(/(60|70|80)\\s?mph/)) {
         hazards.push('damaging straight-line winds');
     }
 
@@ -982,7 +1007,7 @@ function buildAlertSpeech(alertFeature, options = {}) {
     }
     intro += '.';
 
-    // --- Urgency / call to action ---
+    // --- Call to action / urgency ---
     let action = '';
 
     if (isTornado && isWarning) {
@@ -1000,21 +1025,21 @@ function buildAlertSpeech(alertFeature, options = {}) {
         action = ' Monitor the weather closely and follow instructions from local officials.';
     }
 
-    // --- Trend hints from wording ---
     if (desc.includes('intensifying') || desc.includes('strengthening')) {
         action += ' Storms may continue to intensify.';
     } else if (desc.includes('weakening')) {
         action += ' Some weakening is possible, but strong storms are still occurring.';
     }
 
-    let full = intro + hazardText + motionText + ' ' + action;
+    let full = intro + hazardText + motionText + communityText + ' ' + action;
 
     if (options.reminder) {
         full = 'Reminder: ' + full;
     }
 
-    return full.replace(/\s+/g, ' ').trim();
+    return full.replace(/\\s+/g, ' ').trim();
 }
+
 
 async function handleNewAlerts(newAlerts) {
     // Prevent concurrent execution
@@ -1063,7 +1088,7 @@ async function handleNewAlerts(newAlerts) {
                 console.log("Holding zoom for 30 seconds...");
                 await new Promise(resolve => setTimeout(resolve, 30000));
                 console.log("30 seconds complete - now zooming out...");
-            } else {
+            } else{
                 console.log("Speech disabled - holding zoom for 8 seconds...");
                 await new Promise(resolve => setTimeout(resolve, 8000));
             }
