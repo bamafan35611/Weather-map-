@@ -885,6 +885,21 @@ function buildAlertSpeech(alertFeature, options = {}) {
     
     // Helper function to pick random phrase
     const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    
+    // State abbreviation to full name mapping
+    const stateNames = {
+        'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+        'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+        'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+        'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+        'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+        'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+        'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+        'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+        'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+        'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
+        'DC': 'District of Columbia'
+    };
 
     // --- Area list: counties/zones, but trimmed ---
     let areas = (p.areaDesc || '').split(';')
@@ -892,11 +907,28 @@ function buildAlertSpeech(alertFeature, options = {}) {
         .filter(Boolean);
     const maxAreas = Number.isFinite(options.maxAreas) ? options.maxAreas : 3;
     let areaText = '';
+    let detectedState = '';
+    
     if (areas.length > 0) {
+        // Try to detect state from the first area
+        const firstArea = areas[0];
+        const stateMatch = firstArea.match(/,\s*([A-Z]{2})$/);
+        if (stateMatch && stateNames[stateMatch[1]]) {
+            detectedState = stateNames[stateMatch[1]];
+        }
+        
         const shown = areas.slice(0, maxAreas);
-        areaText = shown.join(', ');
+        // Remove state abbreviations from individual counties since we'll add state at the end
+        const cleanedAreas = shown.map(area => area.replace(/,\s*[A-Z]{2}$/, '').trim());
+        areaText = cleanedAreas.join(', ');
+        
         if (areas.length > maxAreas) {
             areaText += ', and surrounding areas';
+        }
+        
+        // Add state name at the end for clarity
+        if (detectedState) {
+            areaText += ' in ' + detectedState;
         }
     }
 
