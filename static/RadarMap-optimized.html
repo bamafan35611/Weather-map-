@@ -886,7 +886,7 @@ function buildAlertSpeech(alertFeature, options = {}) {
     // Helper function to pick random phrase
     const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
     
-    // State abbreviation to full name mapping
+    // State abbreviation to full name mapping (all 50 states + DC + territories)
     const stateNames = {
         'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
         'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
@@ -898,7 +898,10 @@ function buildAlertSpeech(alertFeature, options = {}) {
         'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
         'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
         'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
-        'DC': 'District of Columbia'
+        'DC': 'District of Columbia',
+        // US Territories
+        'PR': 'Puerto Rico', 'VI': 'U.S. Virgin Islands', 'GU': 'Guam', 
+        'AS': 'American Samoa', 'MP': 'Northern Mariana Islands'
     };
 
     // --- Area list: counties/zones, but trimmed ---
@@ -910,11 +913,35 @@ function buildAlertSpeech(alertFeature, options = {}) {
     let detectedState = '';
     
     if (areas.length > 0) {
-        // Try to detect state from the first area
+        // Try multiple methods to detect state
         const firstArea = areas[0];
-        const stateMatch = firstArea.match(/,\s*([A-Z]{2})$/);
+        
+        // Method 1: Look for ", XX" pattern at end (e.g. "Madison County, AL")
+        let stateMatch = firstArea.match(/,\s*([A-Z]{2})$/);
         if (stateMatch && stateNames[stateMatch[1]]) {
             detectedState = stateNames[stateMatch[1]];
+        }
+        
+        // Method 2: Check ALL areas if first didn't have state
+        if (!detectedState) {
+            for (const area of areas) {
+                stateMatch = area.match(/,\s*([A-Z]{2})$/);
+                if (stateMatch && stateNames[stateMatch[1]]) {
+                    detectedState = stateNames[stateMatch[1]];
+                    break;
+                }
+            }
+        }
+        
+        // Method 3: Look for state name anywhere in areaDesc (e.g. "Northern Alabama")
+        if (!detectedState) {
+            const areaDescLower = (p.areaDesc || '').toLowerCase();
+            for (const [abbr, fullName] of Object.entries(stateNames)) {
+                if (areaDescLower.includes(fullName.toLowerCase())) {
+                    detectedState = fullName;
+                    break;
+                }
+            }
         }
         
         const shown = areas.slice(0, maxAreas);
