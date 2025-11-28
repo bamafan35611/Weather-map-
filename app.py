@@ -15,11 +15,13 @@ try:
         format_history_for_frontend
     )
     from verification_service import verify_forecasts
+    from auto_retrain import auto_retrain
     FORECAST_SYSTEM_AVAILABLE = True
     print("✓ Forecast tracking system loaded")
 except ImportError as e:
     print(f"⚠ Forecast system not available: {e}")
     FORECAST_SYSTEM_AVAILABLE = False
+    auto_retrain = None
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -244,6 +246,60 @@ def api_accuracy_stats():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.post('/api/learning/retrain')
+def api_retrain_model():
+    """Manually trigger model retraining"""
+    if not FORECAST_SYSTEM_AVAILABLE or auto_retrain is None:
+        return jsonify({'success': False, 'error': 'Retraining not available'}), 503
+    
+    try:
+        # Run retraining in background thread
+        def retrain_worker():
+            success = auto_retrain()
+            print(f"Retraining {'completed' if success else 'skipped'}")
+        
+        thread = threading.Thread(target=retrain_worker)
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Model retraining started in background'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/learning/retrain/status')
+def api_retrain_status():
+    """Get retraining history and status"""
+    if not FORECAST_SYSTEM_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Retraining not available'}), 503
+    
+    try:
+        import json
+        retrain_log_path = 'models/retrain_log.json'
+        
+        if os.path.exists(retrain_log_path):
+            with open(retrain_log_path, 'r') as f:
+                history = json.load(f)
+            
+            return jsonify({
+                'success': True,
+                'retrain_count': len(history),
+                'history': history[-5:],  # Last 5 retrains
+                'last_retrain': history[-1] if history else None
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'retrain_count': 0,
+                'history': [],
+                'last_retrain': None,
+                'message': 'No retraining has occurred yet'
+            })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.get('/api/ml/status')
 def api_ml_status():
     """Check if local ML connection is configured"""
@@ -275,20 +331,31 @@ def start_verification_loop():
     
     def verification_worker():
         import time
-        print("🔍 Starting background verification loop...")
+        print("🔍 Starting background verification and retraining loop...")
         time.sleep(60)  # Wait 1 minute before first check
+        
+        check_count = 0
         while True:
             try:
+                # Run verification every cycle
                 verify_forecasts()
+                check_count += 1
+                
+                # Run retraining every 24 checks (12 hours if checking every 30 min)
+                if check_count % 24 == 0 and auto_retrain is not None:
+                    print("\n🤖 Automatic retraining check...")
+                    auto_retrain()
+                
             except Exception as e:
                 print(f"⚠ Error in verification loop: {e}")
+            
             # Check every 30 minutes
             time.sleep(1800)
     
     thread = threading.Thread(target=verification_worker)
     thread.daemon = True
     thread.start()
-    print("✓ Background verification loop started")
+    print("✓ Background verification and retraining loop started")
 
 # ----------------------------------------------------------------------
 # Entrypoint
