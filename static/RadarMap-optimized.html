@@ -985,18 +985,39 @@ function buildAlertSpeech(alertFeature, options = {}) {
         hazardText = ' Hazards include ' + hazards.join(' and ') + '.';
     }
 
-    // --- Lead-in style ---
+    // --- Lead-in style with more natural variation ---
     let intro;
+    const hasConfirmedTornado = desc.includes('tornado observed') || desc.includes('confirmed tornado');
+    const isPDS = desc.includes('particularly dangerous situation') || desc.includes('tornado emergency');
+    
     if (isTornado && isWarning) {
-        intro = `We have a ${event} in effect`;
+        if (hasConfirmedTornado || isPDS) {
+            intro = `This is a tornado emergency`;
+        } else if (urgency === 'immediate') {
+            intro = `We have a dangerous tornado situation developing`;
+        } else {
+            intro = `A tornado warning is now in effect`;
+        }
+    } else if (isSevereTStorm && isWarning) {
+        if (desc.includes('destructive') || desc.includes('80 mph') || desc.includes('90 mph')) {
+            intro = `Extremely dangerous thunderstorms are moving through`;
+        } else {
+            intro = `Severe thunderstorms are approaching`;
+        }
+    } else if (isFlashFlood && isWarning) {
+        if (priority === 'extreme' || desc.includes('life-threatening')) {
+            intro = `Life-threatening flash flooding is occurring`;
+        } else {
+            intro = `A flash flood warning is in effect`;
+        }
     } else if (isWarning) {
-        intro = `We have a ${event} in effect`;
+        intro = `A ${event} is now in effect`;
     } else if (isWatch) {
-        intro = `A ${event} has been issued`;
+        intro = `The National Weather Service has issued a ${event}`;
     } else if (priority === 'extreme' || priority === 'severe' || priority === 'high') {
-        intro = `A high-impact ${event} is in effect`;
+        intro = `A ${event} is in effect`;
     } else {
-        intro = `There is a ${event} in effect`;
+        intro = `A ${event} has been issued`;
     }
 
     if (areaText) {
@@ -1007,28 +1028,43 @@ function buildAlertSpeech(alertFeature, options = {}) {
     }
     intro += '.';
 
-    // --- Call to action / urgency ---
+    // --- Call to action / urgency with more conversational language ---
     let action = '';
 
     if (isTornado && isWarning) {
-        action = ' Take cover now in a basement or an interior room on the lowest floor, away from windows.';
-        if (urgency === 'immediate') {
-            action += ' This is a particularly dangerous situation. Do not wait to see or hear the tornado.';
+        if (hasConfirmedTornado) {
+            action = ' A tornado is on the ground right now. Take shelter immediately in your basement or an interior room on the lowest floor. Get away from windows and protect yourself from flying debris.';
+        } else if (urgency === 'immediate' || isPDS) {
+            action = ' This is an extremely dangerous situation. Take cover now in a basement or interior room on the lowest floor. Do not wait to see or hear the tornado.';
+        } else {
+            action = ' Take shelter now in a basement or an interior room on the lowest floor, away from windows.';
         }
     } else if (isSevereTStorm && isWarning) {
-        action = ' Move indoors away from windows and secure loose outdoor objects.';
+        if (desc.includes('destructive') || desc.includes('80 mph') || desc.includes('90 mph')) {
+            action = ' Treat this storm like a tornado warning. Move to an interior room on the lowest floor immediately.';
+        } else {
+            action = ' Move indoors and stay away from windows. Secure any loose outdoor objects.';
+        }
     } else if (isFlashFlood && isWarning) {
-        action = ' Avoid low-lying and poor-drainage areas, and never drive through flooded roadways.';
+        if (priority === 'extreme' || desc.includes('life-threatening')) {
+            action = ' Move to higher ground immediately. Do not wait. Never attempt to drive through flooded areas.';
+        } else {
+            action = ' Avoid low-lying areas and never drive through flooded roadways. Turn around, don\'t drown.';
+        }
     } else if (isWatch) {
-        action = ' Stay weather aware and be ready to take action if warnings are issued.';
+        if (isTornado) {
+            action = ' Conditions are favorable for tornadoes. Have a plan and be ready to take shelter quickly if a warning is issued.';
+        } else {
+            action = ' Stay weather aware and be prepared to take action if conditions worsen.';
+        }
     } else if (priority === 'extreme' || priority === 'severe' || priority === 'high') {
-        action = ' Monitor the weather closely and follow instructions from local officials.';
+        action = ' Monitor conditions closely and follow all instructions from local officials.';
     }
 
     if (desc.includes('intensifying') || desc.includes('strengthening')) {
-        action += ' Storms may continue to intensify.';
+        action += ' This storm is getting stronger.';
     } else if (desc.includes('weakening')) {
-        action += ' Some weakening is possible, but strong storms are still occurring.';
+        action += ' The storm may be weakening, but it\'s still dangerous.';
     }
 
     let full = intro + hazardText + motionText + communityText + ' ' + action;
