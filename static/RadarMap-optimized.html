@@ -917,9 +917,66 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     const descRaw = (p.description || p.headline || '');
     const desc = descRaw.toLowerCase();
+    
+    // --- Storm personality/character based on characteristics ---
+    let stormPersonality = '';
+    if (isWarning) {
+        if (desc.includes('particularly dangerous situation') || desc.includes('tornado emergency') || 
+            desc.includes('destructive') || isPDS) {
+            const extremePersonalities = [
+                ' This is an extremely dangerous situation.',
+                ' We don\'t see storms like this very often.',
+                ' This is well above normal severity.',
+                ' This is a significant weather event.',
+                ' This storm is a serious threat.'
+            ];
+            stormPersonality = pick(extremePersonalities);
+        } else if (desc.includes('confirmed tornado') || desc.includes('tornado observed') ||
+                   desc.includes('80 mph') || desc.includes('90 mph')) {
+            const dangerousPersonalities = [
+                ' This is a dangerous storm.',
+                ' This storm means business.',
+                ' We\'re tracking a particularly nasty cell.',
+                ' This is a real threat.',
+                ' This storm is no joke.'
+            ];
+            stormPersonality = pick(dangerousPersonalities);
+        }
+    }
 
     // --- Motion phrase: "moving east at 45 mph" ---
     let motionText = '';
+    let radarObservation = '';
+    
+    // Add radar observations for warnings
+    if (isWarning) {
+        if (isTornado) {
+            if (desc.includes('confirmed tornado') || desc.includes('tornado observed')) {
+                const confirmedObs = [
+                    ' We have visual confirmation of a tornado.',
+                    ' A tornado has been spotted on the ground.',
+                    ' Spotter reports confirm a tornado.'
+                ];
+                radarObservation = pick(confirmedObs);
+            } else if (desc.includes('radar indicated')) {
+                const radarObs = [
+                    ' Radar is showing strong rotation with this storm.',
+                    ' We\'re seeing impressive rotation signatures on radar.',
+                    ' The radar presentation on this is concerning.',
+                    ' Radar indicates a well-defined circulation.'
+                ];
+                radarObservation = pick(radarObs);
+            }
+        } else if (isSevereTStorm && (desc.includes('70 mph') || desc.includes('80 mph'))) {
+            const windObs = [
+                ' Radar shows very strong winds with this cell.',
+                ' We\'re seeing impressive wind signatures.',
+                ' This storm has a powerful wind core.'
+            ];
+            radarObservation = pick(windObs);
+        }
+    }
+    
     const motionMatch = desc.match(/moving\\s+([a-z\\s]+?)\\s+at\\s+(\\d{1,3})\\s?mph/);
     if (motionMatch) {
         const dir = motionMatch[1].trim();
@@ -983,7 +1040,16 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     const hailMatch = desc.match(/((golf ball|ping pong ball|half dollar|quarter)\\s+size\\s+hail|[0-9/.]+\\s?(inch|in)\\s+hail)/);
     if (hailMatch) {
-        hazards.push('large hail');
+        const sizeDesc = hailMatch[1];
+        if (sizeDesc.includes('golf ball')) {
+            hazards.push('golf ball-sized hail');
+        } else if (sizeDesc.includes('ping pong')) {
+            hazards.push('ping pong ball-sized hail');
+        } else if (sizeDesc.includes('half dollar')) {
+            hazards.push('very large hail');
+        } else {
+            hazards.push('large hail');
+        }
     } else if (desc.includes('hail')) {
         hazards.push('hail');
     }
@@ -991,21 +1057,45 @@ function buildAlertSpeech(alertFeature, options = {}) {
     const windMatch = desc.match(/(\\d{2,3})\\s?mph\\s+winds?/);
     if (windMatch) {
         const speed = windMatch[1];
-        hazards.push(`damaging winds around ${speed} miles per hour`);
+        if (parseInt(speed) >= 80) {
+            hazards.push(`destructive winds around ${speed} miles per hour, strong enough to snap large tree limbs and cause structural damage`);
+        } else if (parseInt(speed) >= 70) {
+            hazards.push(`damaging winds around ${speed} miles per hour, capable of downing trees and power lines`);
+        } else {
+            hazards.push(`damaging winds around ${speed} miles per hour`);
+        }
     } else if (desc.match(/(60|70|80)\\s?mph/)) {
         hazards.push('damaging straight-line winds');
     }
 
     let hazardText = '';
+    let hazardTransition = '';
     if (hazards.length > 0) {
-        const hazardIntros = [
-            'We\'re looking at',
-            'This storm is packing',
-            'Expect',
-            'Hazards include',
-            'We\'re seeing'
-        ];
-        hazardText = ' ' + pick(hazardIntros) + ' ' + hazards.join(' and ') + '.';
+        // Add transitions before hazards for more natural flow
+        if (isWarning && hazards.length >= 2) {
+            const transitions = [
+                ' Here\'s what we\'re dealing with:',
+                ' The main threats are',
+                ' Primary hazards include',
+                ' We\'re looking at',
+                ' This storm is packing'
+            ];
+            hazardTransition = pick(transitions);
+            if (hazardTransition.endsWith(':')) {
+                hazardText = hazardTransition + ' ' + hazards.join(' and ') + '.';
+            } else {
+                hazardText = hazardTransition + ' ' + hazards.join(' and ') + '.';
+            }
+        } else {
+            const hazardIntros = [
+                'We\'re looking at',
+                'This storm is packing',
+                'Expect',
+                'Hazards include',
+                'We\'re seeing'
+            ];
+            hazardText = ' ' + pick(hazardIntros) + ' ' + hazards.join(' and ') + '.';
+        }
     }
 
     // --- Lead-in style with more natural variation ---
@@ -1100,77 +1190,111 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     // --- Call to action / urgency with more conversational language ---
     let action = '';
+    let actionTransition = '';
+    
+    // Add emphasis and transitions before critical actions
+    if (isWarning && (isTornado || (isSevereTStorm && desc.includes('destructive')))) {
+        const emphasisPhrases = [
+            ' Listen,',
+            ' Folks,',
+            ' Please,',
+            ' Now,',
+            ' Look,'
+        ];
+        const actionIntros = [
+            ' Here\'s what you need to do:',
+            ' Here\'s the bottom line:',
+            ' Most importantly:',
+            ' Take action now:',
+            ''
+        ];
+        if (Math.random() < 0.6) {  // Use emphasis 60% of the time for warnings
+            actionTransition = pick(emphasisPhrases);
+        }
+        if (Math.random() < 0.3) {  // Use action intro 30% of the time
+            actionTransition += pick(actionIntros);
+        }
+    }
 
     if (isTornado && isWarning) {
         if (hasConfirmedTornado) {
             const confirmedActions = [
-                ' A tornado is on the ground right now. Take shelter immediately in your basement or an interior room on the lowest floor. Get away from windows and protect yourself from flying debris.',
-                ' We have a confirmed tornado on the ground. Get to your safe place now. Basement or interior room on the lowest floor, away from windows.',
-                ' Tornado on the ground. This is not a drill. Take cover immediately in a basement or interior room. Protect yourself from debris.'
+                ' a tornado is on the ground right now. Take shelter immediately in your basement or an interior room on the lowest floor. Get away from windows and protect yourself from flying debris.',
+                ' we have a confirmed tornado on the ground. Get to your safe place now. Basement or interior room on the lowest floor, away from windows.',
+                ' tornado on the ground. This is not a drill. Take cover immediately in a basement or interior room. Protect yourself from debris.',
+                ' this is serious - a tornado is on the ground. Take shelter now in your basement or interior room away from windows.'
             ];
-            action = pick(confirmedActions);
+            action = actionTransition + pick(confirmedActions);
         } else if (urgency === 'immediate' || isPDS) {
             const pdsActions = [
-                ' This is an extremely dangerous situation. Take cover now in a basement or interior room on the lowest floor. Do not wait to see or hear the tornado.',
-                ' This is a life-threatening situation. Get to shelter immediately. Basement or lowest floor interior room. Don\'t wait.',
-                ' Extremely dangerous. Take shelter now in your basement or an interior room on the lowest floor. Do not try to wait this out.'
+                ' this is an extremely dangerous situation. Take cover now in a basement or interior room on the lowest floor. Do not wait to see or hear the tornado.',
+                ' this is life-threatening. Get to shelter immediately. Basement or lowest floor interior room. Don\'t wait.',
+                ' this is extremely dangerous. Take shelter now in your basement or an interior room on the lowest floor. Don\'t try to wait this out.',
+                ' don\'t take chances with this one. Get to your safe place immediately. Do not wait.'
             ];
-            action = pick(pdsActions);
+            action = actionTransition + pick(pdsActions);
         } else {
             const tornadoActions = [
-                ' Take shelter now in a basement or an interior room on the lowest floor, away from windows.',
-                ' Get to your safe place immediately. Basement or interior room on the lowest floor.',
-                ' Seek shelter now. Move to a basement or interior room away from windows.'
+                ' take shelter now in a basement or an interior room on the lowest floor, away from windows.',
+                ' get to your safe place immediately. Basement or interior room on the lowest floor.',
+                ' seek shelter now. Move to a basement or interior room away from windows.',
+                ' you need to act quickly here. Get to a basement or interior room on the lowest floor.'
             ];
-            action = pick(tornadoActions);
+            action = actionTransition + pick(tornadoActions);
         }
     } else if (isSevereTStorm && isWarning) {
         if (desc.includes('destructive') || desc.includes('80 mph') || desc.includes('90 mph')) {
             const destructiveActions = [
-                ' Treat this storm like a tornado warning. Move to an interior room on the lowest floor immediately.',
-                ' This storm is extremely dangerous. Take shelter on the lowest floor, away from windows, right now.',
-                ' Get inside immediately. Move to an interior room on the lowest floor and stay away from windows.'
+                ' treat this storm like a tornado warning. Move to an interior room on the lowest floor immediately.',
+                ' this storm is extremely dangerous. Take shelter on the lowest floor, away from windows, right now.',
+                ' get inside immediately. Move to an interior room on the lowest floor and stay away from windows.',
+                ' this is serious. Get to the lowest floor and away from windows now.'
             ];
-            action = pick(destructiveActions);
+            action = actionTransition + pick(destructiveActions);
         } else {
             const severeActions = [
-                ' Move indoors and stay away from windows. Secure any loose outdoor objects.',
-                ' Get inside now. Move away from windows and bring in any outdoor items.',
-                ' Head indoors immediately. Stay away from windows and secure loose objects outside.'
+                ' move indoors and stay away from windows. Secure any loose outdoor objects.',
+                ' get inside now. Move away from windows and bring in any outdoor items.',
+                ' head indoors immediately. Stay away from windows and secure loose objects outside.',
+                ' take this seriously. Get inside, away from windows.'
             ];
-            action = pick(severeActions);
+            action = actionTransition + pick(severeActions);
         }
     } else if (isFlashFlood && isWarning) {
         if (priority === 'extreme' || desc.includes('life-threatening')) {
             const extremeFloodActions = [
-                ' Move to higher ground immediately. Do not wait. Never attempt to drive through flooded areas.',
-                ' Get to high ground now. Don\'t wait. Turn around, don\'t drown.',
-                ' This is life-threatening. Move to higher ground right now. Do not drive through water.'
+                ' move to higher ground immediately. Do not wait. Never attempt to drive through flooded areas.',
+                ' get to high ground now. Don\'t wait. Turn around, don\'t drown.',
+                ' this is life-threatening. Move to higher ground right now. Do not drive through water.',
+                ' please, don\'t take chances. Get to higher ground now. Never drive through floodwater.'
             ];
-            action = pick(extremeFloodActions);
+            action = actionTransition + pick(extremeFloodActions);
         } else {
             const floodActions = [
-                ' Avoid low-lying areas and never drive through flooded roadways. Turn around, don\'t drown.',
-                ' Stay out of low areas. Do not attempt to cross flooded roads.',
-                ' Keep away from flood-prone areas. Never drive through standing water.'
+                ' avoid low-lying areas and never drive through flooded roadways. Turn around, don\'t drown.',
+                ' stay out of low areas. Do not attempt to cross flooded roads.',
+                ' keep away from flood-prone areas. Never drive through standing water.',
+                ' be smart about this. Avoid flooded areas and never drive through water.'
             ];
-            action = pick(floodActions);
+            action = actionTransition + pick(floodActions);
         }
     } else if (isWatch) {
         if (isTornado) {
             const tornadoWatchActions = [
                 ' Conditions are favorable for tornadoes. Have a plan and be ready to take shelter quickly if a warning is issued.',
                 ' Tornadoes are possible. Know where you\'ll go if a warning is issued.',
-                ' Be ready. Conditions support tornado development. Have your safe place ready.'
+                ' Be ready. Conditions support tornado development. Have your safe place ready.',
+                ' Stay alert. Tornadoes could develop. Have a plan.'
             ];
-            action = pick(tornadoWatchActions);
+            action = ' ' + pick(tornadoWatchActions);
         } else {
             const watchActions = [
                 ' Stay weather aware and be prepared to take action if conditions worsen.',
                 ' Keep an eye on the weather and be ready to act.',
-                ' Monitor conditions and be prepared to take shelter if needed.'
+                ' Monitor conditions and be prepared to take shelter if needed.',
+                ' Stay alert and have a plan ready.'
             ];
-            action = pick(watchActions);
+            action = ' ' + pick(watchActions);
         }
     } else if (priority === 'extreme' || priority === 'severe' || priority === 'high') {
         action = ' Monitor conditions closely and follow all instructions from local officials.';
@@ -1180,19 +1304,53 @@ function buildAlertSpeech(alertFeature, options = {}) {
         const intensifyPhrases = [
             ' This storm is getting stronger.',
             ' The storm is intensifying.',
-            ' Conditions are worsening.'
+            ' Conditions are worsening.',
+            ' This storm is building.'
         ];
         action += pick(intensifyPhrases);
     } else if (desc.includes('weakening')) {
         const weakenPhrases = [
             ' The storm may be weakening, but it\'s still dangerous.',
             ' Some weakening is occurring, but stay alert.',
-            ' The storm is losing strength but remain cautious.'
+            ' The storm is losing strength but remain cautious.',
+            ' It may be weakening, but don\'t let your guard down.'
         ];
         action += pick(weakenPhrases);
     }
 
-    let full = intro + hazardText + motionText + communityText + ' ' + action;
+    // --- Add sign-off phrases for a natural conclusion ---
+    let signOff = '';
+    let listenFor = '';
+    
+    // Add "what to listen for" warnings for tornadoes
+    if (isTornado && isWarning && Math.random() < 0.4) {  // 40% of tornado warnings
+        const listenForPhrases = [
+            ' Listen for the roar of an approaching tornado.',
+            ' If you hear a loud roar like a freight train, take cover immediately.',
+            ' A tornado may sound like a freight train approaching.'
+        ];
+        listenFor = pick(listenForPhrases);
+    } else if (isSevereTStorm && isWarning && Math.random() < 0.3) {  // 30% of severe storms
+        const listenForPhrases = [
+            ' If you hear loud thunder, you\'re close enough for lightning to strike.',
+            ' Frequent lightning means you\'re in the danger zone.'
+        ];
+        listenFor = pick(listenForPhrases);
+    }
+    
+    if (isWarning && Math.random() < 0.5) {  // 50% of warnings get a sign-off
+        const signOffs = [
+            ' Stay safe out there.',
+            ' We\'ll keep you updated.',
+            ' Take care of yourselves.',
+            ' Be smart, be safe.',
+            ' Stay weather aware.',
+            ' Keep yourself safe.'
+        ];
+        signOff = pick(signOffs);
+    }
+
+    let full = intro + stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
 
     // Add time context for non-reminder alerts to make them feel more immediate
     if (!options.reminder && isWarning) {
@@ -1204,7 +1362,7 @@ function buildAlertSpeech(alertFeature, options = {}) {
         ];
         const timePrefix = pick(timeContexts);
         if (timePrefix && Math.random() < 0.4) {  // Use time context 40% of the time
-            full = timePrefix + intro.charAt(0).toLowerCase() + intro.slice(1) + hazardText + motionText + communityText + ' ' + action;
+            full = timePrefix + intro.charAt(0).toLowerCase() + intro.slice(1) + stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
         }
     }
 
@@ -1214,16 +1372,44 @@ function buildAlertSpeech(alertFeature, options = {}) {
             'Quick reminder, ',
             'Heads up, ',
             'Still in effect, ',
-            'We\'re still under '
+            'We\'re still under ',
+            'Update on '
         ];
-        // For "we're still under" format, adjust the intro slightly
-        if (reminderPhrases[4] && Math.random() < 0.2) {
-            // Use "we're still under" 20% of the time
-            full = 'We\'re still under ' + intro.replace(/^(A |The |We have |There\'s )/, '').toLowerCase();
-            full += hazardText + motionText + communityText + ' ' + action;
+        
+        // Check if this is an update/extension
+        const isUpdate = options.isUpdate || desc.includes('has been extended') || desc.includes('updated');
+        const isExpired = options.isExpired || desc.includes('has been dropped') || desc.includes('cancelled');
+        
+        if (isExpired) {
+            const expiredPhrases = [
+                'Good news, the ',
+                'Update: the ',
+                'The '
+            ];
+            full = pick(expiredPhrases) + event.toLowerCase() + ' has been allowed to expire for ' + areaText + '. Conditions have improved.';
+        } else if (isUpdate) {
+            const updatePhrases = [
+                'Update on that ',
+                'The ',
+                'An update: the '
+            ];
+            const extendedPhrases = [
+                ' has been extended.',
+                ' remains in effect.',
+                ' is still active.'
+            ];
+            full = pick(updatePhrases) + event.toLowerCase() + pick(extendedPhrases);
+            full += stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
         } else {
-            full = pick(reminderPhrases.slice(0, 4)) + intro.charAt(0).toLowerCase() + intro.slice(1);
-            full += hazardText + motionText + communityText + ' ' + action;
+            // For "we're still under" format, adjust the intro slightly
+            if (reminderPhrases[4] && Math.random() < 0.2) {
+                // Use "we're still under" 20% of the time
+                full = 'We\'re still under ' + intro.replace(/^(A |The |We have |There\'s )/, '').toLowerCase();
+                full += stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
+            } else {
+                full = pick(reminderPhrases.slice(0, 4)) + intro.charAt(0).toLowerCase() + intro.slice(1);
+                full += stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
+            }
         }
     }
 
