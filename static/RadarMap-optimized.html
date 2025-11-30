@@ -267,6 +267,10 @@ const __api_qp = new URLSearchParams(location.search);
 const BACKEND_BASE_URL = (__api_qp.get('api')) ||
   ((location.hostname.includes('render.com') || location.hostname.endsWith('onrender.com')) ? '' : 'http://localhost:5000');
 
+// Home position (lower 48 view)
+const HOME_CENTER = [-96.5, 38.5];
+const HOME_ZOOM = 4.4;
+
 let map;
 let speechEnabled = false;
 let currentForecast = null;
@@ -421,9 +425,6 @@ async function performPeriodicAlertCheck() {
         return;
     }
     
-    const viewportCenter = map.getCenter();
-    const viewportZoom = map.getZoom();
-    
     console.log(`[15min Check] Cycling through ${viewportWarnings.length} viewport warnings`);
     
     for (let i = 0; i < viewportWarnings.length; i++) {
@@ -467,11 +468,11 @@ async function performPeriodicAlertCheck() {
             
             // Only zoom back if user hasn't manually moved the map
             if (!_userMovedMapDuringProcessing) {
-                console.log(`[15min Check] Zooming BACK OUT to original position...`);
-                console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
+                console.log(`[15min Check] Zooming BACK OUT to home position (lower 48)...`);
+                console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
                 map.flyTo({
-                    center: viewportCenter,
-                    zoom: viewportZoom,
+                    center: HOME_CENTER,
+                    zoom: HOME_ZOOM,
                     duration: 2000
                 });
                 
@@ -716,7 +717,7 @@ mapboxgl.accessToken = __mb_token;
         container: 'map',
         style: 'mapbox://styles/mapbox/dark-v10',
         center: [-96.5, 38.5],
-        zoom: 3.8,
+        zoom: 4.4,
         projection: 'mercator'
     });
     
@@ -1488,9 +1489,6 @@ async function handleNewAlerts(newAlerts) {
     
     console.log(`Handling ${newAlerts.length} new alerts with speech-synchronized zoom`);
     
-    const viewportCenter = map.getCenter();
-    const viewportZoom = map.getZoom();
-    
     for (let i = 0; i < newAlerts.length; i++) {
         const alert = newAlerts[i];
         
@@ -1536,11 +1534,11 @@ async function handleNewAlerts(newAlerts) {
             
             // Only zoom back if user hasn't manually moved the map
             if (!_userMovedMapDuringProcessing) {
-                console.log("Zooming BACK OUT to viewport...");
-                console.log('[back] [Map] Returning to manual view at', new Date().toLocaleTimeString());
+                console.log("Zooming BACK OUT to home position (lower 48)...");
+                console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
                 map.flyTo({
-                    center: viewportCenter,
-                    zoom: viewportZoom,
+                    center: HOME_CENTER,
+                    zoom: HOME_ZOOM,
                     duration: 2000
                 });
                 
