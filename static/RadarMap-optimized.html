@@ -398,39 +398,12 @@ async function performPeriodicAlertCheck() {
         return;
     }
     
-    const currentBounds = map.getBounds();
-    const viewportWarnings = warningsWithGeometry.filter(alert => {
-        try {
-            const alertFeature = {
-                type: 'FeatureCollection',
-                features: [alert]
-            };
-            const alertBounds = getAlertBBox(alertFeature);
-            const alertCenter = {
-                lng: (alertBounds[0] + alertBounds[2]) / 2,
-                lat: (alertBounds[1] + alertBounds[3]) / 2
-            };
-            
-            return currentBounds.contains([alertCenter.lng, alertCenter.lat]);
-        } catch (error) {
-            return false;
-        }
-    });
+    console.log(`[15min Check] Cycling through ${warningsWithGeometry.length} warnings`);
     
-    console.log(`[15min Check] Warnings in viewport: ${viewportWarnings.length} of ${warningsWithGeometry.length}`);
-    
-    if (viewportWarnings.length === 0) {
-        console.log("[15min Check] No warnings in current viewport");
-        _alertProcessingInProgress = false;
-        return;
-    }
-    
-    console.log(`[15min Check] Cycling through ${viewportWarnings.length} viewport warnings`);
-    
-    for (let i = 0; i < viewportWarnings.length; i++) {
-        const alert = viewportWarnings[i];
+    for (let i = 0; i < warningsWithGeometry.length; i++) {
+        const alert = warningsWithGeometry[i];
         
-        console.log(`[15min Check] Processing warning ${i+1}/${viewportWarnings.length}: ${alert.properties?.event}`);
+        console.log(`[15min Check] Processing warning ${i+1}/${warningsWithGeometry.length}: ${alert.properties?.event}`);
         
         try {
             const alertFeature = {
@@ -481,7 +454,7 @@ async function performPeriodicAlertCheck() {
                 console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
             }
             
-            if (i < viewportWarnings.length - 1) {
+            if (i < warningsWithGeometry.length - 1) {
                 console.log(`[15min Check] Waiting 15 seconds before next warning...`);
                 await new Promise(resolve => setTimeout(resolve, 15000));
             }
@@ -491,7 +464,7 @@ async function performPeriodicAlertCheck() {
         }
     }
     
-    console.log(`[15min Check] Complete - cycled through ${viewportWarnings.length} warnings`);
+    console.log(`[15min Check] Complete - cycled through ${warningsWithGeometry.length} warnings`);
     _alertProcessingInProgress = false;
 }
 
