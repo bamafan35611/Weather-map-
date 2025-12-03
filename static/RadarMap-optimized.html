@@ -375,97 +375,101 @@ async function performPeriodicAlertCheck() {
     _alertProcessingInProgress = true;
     _userMovedMapDuringProcessing = false;
     
-    console.log(`[15min Check] Starting periodic warning check...`);
-    console.log(`[15min Check] Active warnings count: ${activeWarnings.length}`);
-    
-    if (activeWarnings.length === 0) {
-        console.log("[15min Check] No active warnings to re-zoom to");
-        _alertProcessingInProgress = false;
-        return;
-    }
-    
-    const warningsWithGeometry = activeWarnings.filter(alert => 
-        alert.geometry && 
-        alert.geometry.coordinates && 
-        alert.geometry.coordinates.length > 0
-    );
-    
-    console.log(`[15min Check] Warnings with geometry: ${warningsWithGeometry.length} of ${activeWarnings.length}`);
-    
-    if (warningsWithGeometry.length === 0) {
-        console.log("[15min Check] No warnings have geometry data - cannot zoom");
-        _alertProcessingInProgress = false;
-        return;
-    }
-    
-    console.log(`[15min Check] Cycling through ${warningsWithGeometry.length} warnings`);
-    
-    for (let i = 0; i < warningsWithGeometry.length; i++) {
-        const alert = warningsWithGeometry[i];
+    try {
+        console.log(`[15min Check] Starting periodic warning check...`);
+        console.log(`[15min Check] Active warnings count: ${activeWarnings.length}`);
         
-        console.log(`[15min Check] Processing warning ${i+1}/${warningsWithGeometry.length}: ${alert.properties?.event}`);
+        if (activeWarnings.length === 0) {
+            console.log("[15min Check] No active warnings to re-zoom to");
+            return;
+        }
         
-        try {
-            const alertFeature = {
-                type: 'FeatureCollection',
-                features: [alert]
-            };
-            const bounds = getAlertBBox(alertFeature);
+        const warningsWithGeometry = activeWarnings.filter(alert => 
+            alert.geometry && 
+            alert.geometry.coordinates && 
+            alert.geometry.coordinates.length > 0
+        );
+        
+        console.log(`[15min Check] Warnings with geometry: ${warningsWithGeometry.length} of ${activeWarnings.length}`);
+        
+        if (warningsWithGeometry.length === 0) {
+            console.log("[15min Check] No warnings have geometry data - cannot zoom");
+            return;
+        }
+        
+        console.log(`[15min Check] Cycling through ${warningsWithGeometry.length} warnings`);
+        
+        for (let i = 0; i < warningsWithGeometry.length; i++) {
+            const alert = warningsWithGeometry[i];
             
-            console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
+            console.log(`[15min Check] Processing warning ${i+1}/${warningsWithGeometry.length}: ${alert.properties?.event}`);
             
-            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
-        map.fitBounds(bounds, { 
-                padding: 50, 
-                maxZoom: 10,
-                duration: 2000 
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, 2500));
-            
-            console.log(`[15min Check] Showing popup for: ${alert.properties?.event}`);
-            const popup = showAutoAlertPopup(alert);
-            
-            if (speechEnabled) {
-                const reminderText = buildAlertSpeech(alert, { reminder: true, maxAreas: 2 });
-                console.log(`[15min Check] Speaking: ${reminderText}`);
-                await speakText(reminderText, 'periodic-check');
-            }
-            
-            console.log(`[15min Check] Holding zoomed IN for 30 seconds...`);
-            await new Promise(resolve => setTimeout(resolve, 30000));
-            
-            if (popup && popup.parentNode) {
-                popup.remove();
-            }
-            
-            // Only zoom back if user hasn't manually moved the map
-            if (!_userMovedMapDuringProcessing) {
-                console.log(`[15min Check] Zooming BACK OUT to home position (lower 48)...`);
-                console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
-                map.flyTo({
-                    center: HOME_CENTER,
-                    zoom: HOME_ZOOM,
-                    duration: 2000
+            try {
+                const alertFeature = {
+                    type: 'FeatureCollection',
+                    features: [alert]
+                };
+                const bounds = getAlertBBox(alertFeature);
+                
+                console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
+                
+                console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            map.fitBounds(bounds, { 
+                    padding: 50, 
+                    maxZoom: 10,
+                    duration: 2000 
                 });
                 
                 await new Promise(resolve => setTimeout(resolve, 2500));
-            } else {
-                console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
+                
+                console.log(`[15min Check] Showing popup for: ${alert.properties?.event}`);
+                const popup = showAutoAlertPopup(alert);
+                
+                if (speechEnabled) {
+                    const reminderText = buildAlertSpeech(alert, { reminder: true, maxAreas: 2 });
+                    console.log(`[15min Check] Speaking: ${reminderText}`);
+                    await speakText(reminderText, 'periodic-check');
+                }
+                
+                console.log(`[15min Check] Holding zoomed IN for 30 seconds...`);
+                await new Promise(resolve => setTimeout(resolve, 30000));
+                
+                if (popup && popup.parentNode) {
+                    popup.remove();
+                }
+                
+                // Only zoom back if user hasn't manually moved the map
+                if (!_userMovedMapDuringProcessing) {
+                    console.log(`[15min Check] Zooming BACK OUT to home position (lower 48)...`);
+                    console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
+                    map.flyTo({
+                        center: HOME_CENTER,
+                        zoom: HOME_ZOOM,
+                        duration: 2000
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, 2500));
+                } else {
+                    console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
+                }
+                
+                if (i < warningsWithGeometry.length - 1) {
+                    console.log(`[15min Check] Waiting 15 seconds before next warning...`);
+                    await new Promise(resolve => setTimeout(resolve, 15000));
+                }
+                
+            } catch (error) {
+                console.error(`[15min Check] Error processing warning:`, error);
+                // Continue to next warning even if one fails
             }
-            
-            if (i < warningsWithGeometry.length - 1) {
-                console.log(`[15min Check] Waiting 15 seconds before next warning...`);
-                await new Promise(resolve => setTimeout(resolve, 15000));
-            }
-            
-        } catch (error) {
-            console.error(`[15min Check] Error processing warning:`, error);
         }
+        
+        console.log(`[15min Check] Complete - cycled through ${warningsWithGeometry.length} warnings`);
+    } finally {
+        // ALWAYS reset the flag, even if there's an error
+        _alertProcessingInProgress = false;
+        console.log("[15min Check] Processing flag reset");
     }
-    
-    console.log(`[15min Check] Complete - cycled through ${warningsWithGeometry.length} warnings`);
-    _alertProcessingInProgress = false;
 }
 
 
@@ -1460,77 +1464,83 @@ async function handleNewAlerts(newAlerts) {
     _alertProcessingInProgress = true;
     _userMovedMapDuringProcessing = false;
     
-    console.log(`Handling ${newAlerts.length} new alerts with speech-synchronized zoom`);
-    
-    for (let i = 0; i < newAlerts.length; i++) {
-        const alert = newAlerts[i];
+    try {
+        console.log(`Handling ${newAlerts.length} new alerts with speech-synchronized zoom`);
         
-        try {
-            const alertFeature = {
-                type: 'FeatureCollection',
-                features: [alert]
-            };
-            const bounds = getAlertBBox(alertFeature);
+        for (let i = 0; i < newAlerts.length; i++) {
+            const alert = newAlerts[i];
             
-            console.log(`Processing alert ${i+1}/${newAlerts.length}: ${getAlertTitle(alert)}`);
-            
-            console.log("Zooming IN to alert...");
-            console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
-        map.fitBounds(bounds, {
-                padding: 50,
-                maxZoom: 10,
-                duration: 2000
-            });
-            
-            await new Promise(resolve => setTimeout(resolve, 2500));
-            
-            console.log("Showing alert popup...");
-            const popup = showAutoAlertPopup(alert);
-            
-            if (speechEnabled) {
-                const alertSpeech = buildAlertSpeech(alert);
-                console.log("Speaking alert - map will stay zoomed for 30 seconds...");
-                speakText(alertSpeech, 'alert');
-                console.log("Holding zoom for 30 seconds...");
-                await new Promise(resolve => setTimeout(resolve, 30000));
-                console.log("30 seconds complete - now zooming out...");
-            } else{
-                console.log("Speech disabled - holding zoom for 8 seconds...");
-                await new Promise(resolve => setTimeout(resolve, 8000));
-            }
-            
-            if (popup && popup.parentNode) {
-                popup.remove();
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // Only zoom back if user hasn't manually moved the map
-            if (!_userMovedMapDuringProcessing) {
-                console.log("Zooming BACK OUT to home position (lower 48)...");
-                console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
-                map.flyTo({
-                    center: HOME_CENTER,
-                    zoom: HOME_ZOOM,
+            try {
+                const alertFeature = {
+                    type: 'FeatureCollection',
+                    features: [alert]
+                };
+                const bounds = getAlertBBox(alertFeature);
+                
+                console.log(`Processing alert ${i+1}/${newAlerts.length}: ${getAlertTitle(alert)}`);
+                
+                console.log("Zooming IN to alert...");
+                console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
+            map.fitBounds(bounds, {
+                    padding: 50,
+                    maxZoom: 10,
                     duration: 2000
                 });
                 
                 await new Promise(resolve => setTimeout(resolve, 2500));
-            } else {
-                console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
+                
+                console.log("Showing alert popup...");
+                const popup = showAutoAlertPopup(alert);
+                
+                if (speechEnabled) {
+                    const alertSpeech = buildAlertSpeech(alert);
+                    console.log("Speaking alert - map will stay zoomed for 30 seconds...");
+                    speakText(alertSpeech, 'alert');
+                    console.log("Holding zoom for 30 seconds...");
+                    await new Promise(resolve => setTimeout(resolve, 30000));
+                    console.log("30 seconds complete - now zooming out...");
+                } else{
+                    console.log("Speech disabled - holding zoom for 8 seconds...");
+                    await new Promise(resolve => setTimeout(resolve, 8000));
+                }
+                
+                if (popup && popup.parentNode) {
+                    popup.remove();
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Only zoom back if user hasn't manually moved the map
+                if (!_userMovedMapDuringProcessing) {
+                    console.log("Zooming BACK OUT to home position (lower 48)...");
+                    console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
+                    map.flyTo({
+                        center: HOME_CENTER,
+                        zoom: HOME_ZOOM,
+                        duration: 2000
+                    });
+                    
+                    await new Promise(resolve => setTimeout(resolve, 2500));
+                } else {
+                    console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
+                }
+                
+                if (i < newAlerts.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+                
+            } catch (alertError) {
+                console.error(`Error handling alert:`, alertError);
+                // Continue to next alert even if one fails
             }
-            
-            if (i < newAlerts.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-            }
-            
-        } catch (alertError) {
-            console.error(`Error handling alert:`, alertError);
         }
+        
+        console.log("Alert processing complete - speech synchronized");
+    } finally {
+        // ALWAYS reset the flag, even if there's an error
+        _alertProcessingInProgress = false;
+        console.log("[Alert] Processing flag reset");
     }
-    
-    console.log("Alert processing complete - speech synchronized");
-    _alertProcessingInProgress = false;
 }
 
 async function fetchAlerts() {
