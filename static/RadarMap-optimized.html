@@ -745,12 +745,12 @@ async function nationwideWeatherNarration() {
     }
 }
 
-// Start nationwide narration every 15 minutes
+// Start nationwide narration every 12 minutes (to avoid conflict with 15-min alert check)
 setInterval(() => {
     if (speechEnabled && !_alertProcessingInProgress) {
         nationwideWeatherNarration();
     }
-}, 900000); // 15 minutes
+}, 720000); // 12 minutes
 
 
 // === Performance: cache bbox per alert ===
@@ -3186,9 +3186,10 @@ console.log("[NEW] 2-minute safety timeout protection");
 console.log("[NEW] Enhanced error handling for zoom operations");
 console.log("[NEW] Automatic force reset if system gets stuck");
 console.log("[NEW] Memory leak prevention (30-min cleanup cycles)");
-console.log("[NEW] NATIONWIDE NARRATOR - broadcasts every 15 min");
+console.log("[NEW] NATIONWIDE NARRATOR - broadcasts every 12 min");
 console.log("[NEW] REGION PANNING - visits active weather areas");
 console.log("[NEW] SMART INTERRUPTION - alerts always take priority");
+console.log("[NEW] STAGGERED TIMING - avoids conflict with 15-min alert check");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
