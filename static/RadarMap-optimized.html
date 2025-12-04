@@ -820,7 +820,10 @@ async function performPeriodicAlertCheck() {
         for (let i = 0; i < warningsWithGeometry.length; i++) {
             const alert = warningsWithGeometry[i];
             
-            console.log(`[15min Check] Processing warning ${i+1}/${warningsWithGeometry.length}: ${alert.properties?.event}`);
+            console.log(`[15min Check] ========== Processing warning ${i+1}/${warningsWithGeometry.length} ==========`);
+            console.log(`[15min Check] Alert event: ${alert.properties?.event}`);
+            console.log(`[15min Check] Alert has geometry: ${!!alert.geometry}`);
+            console.log(`[15min Check] Alert has properties: ${!!alert.properties}`);
             
             try {
                 const alertFeature = {
@@ -854,12 +857,26 @@ async function performPeriodicAlertCheck() {
                 await new Promise(resolve => setTimeout(resolve, 500)); // Extra buffer
                 
                 console.log(`[15min Check] Showing popup for: ${alert.properties?.event}`);
-                const popup = showAutoAlertPopup(alert);
+                
+                let popup = null;
+                try {
+                    popup = showAutoAlertPopup(alert);
+                    console.log(`[15min Check] Popup displayed successfully`);
+                } catch (popupError) {
+                    console.error(`[15min Check] ❌ Popup failed:`, popupError);
+                }
                 
                 if (speechEnabled) {
-                    const reminderText = buildAlertSpeech(alert, { reminder: true, maxAreas: 2 });
-                    console.log(`[15min Check] Speaking: ${reminderText}`);
-                    await speakText(reminderText, 'periodic-check');
+                    try {
+                        const reminderText = buildAlertSpeech(alert, { reminder: true, maxAreas: 2 });
+                        console.log(`[15min Check] Speaking: ${reminderText.substring(0, 100)}...`);
+                        await speakText(reminderText, 'periodic-check');
+                        console.log(`[15min Check] ✓ Speech completed`);
+                    } catch (speechError) {
+                        console.error(`[15min Check] ❌ Speech failed:`, speechError);
+                    }
+                } else {
+                    console.log(`[15min Check] Voice disabled - skipping speech`);
                 }
                 
                 console.log(`[15min Check] Holding zoomed IN for 30 seconds...`);
@@ -1981,6 +1998,10 @@ async function handleNewAlerts(newAlerts) {
                 }
                 
                 if (i < newAlerts.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                } else {
+                    // CRITICAL FIX: Wait after last alert before clearing flag
+                    console.log(`[Alert] Last alert processed, waiting 5 seconds before releasing lock...`);
                     await new Promise(resolve => setTimeout(resolve, 5000));
                 }
                 
