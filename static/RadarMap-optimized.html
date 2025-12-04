@@ -293,6 +293,11 @@ let _alertProcessingInProgress = false;
 let _userMovedMapDuringProcessing = false;
 let _savedViewport = null;
 
+// === ZOOM FIX: Timeout protection ===
+const MAX_ZOOM_LOCK_DURATION = 120000; // 2 minutes safety timeout
+let _zoomLockStartTime = null;
+let _zoomLockTimer = null;
+
 // Countdown timers (global scope for scheduler access)
 let briefingCountdown = 3600;
 let alertCheckCountdown = 900;
@@ -346,6 +351,86 @@ function updateActiveWarnings(alerts) {
     console.log(`[Repeat] Tracking ${activeWarnings.length} active warnings for 15-min re-announcement.`);
 }
 
+// === ZOOM FIX: Enhanced flag management and recovery ===
+function setProcessingFlag(value, reason) {
+    _alertProcessingInProgress = value;
+    
+    if (value) {
+        _zoomLockStartTime = Date.now();
+        console.log(`[ZOOM-FIX] Processing flag SET: ${reason}`);
+        
+        _zoomLockTimer = setTimeout(() => {
+            console.error('[ZOOM-FIX] ⚠️ SAFETY TIMEOUT - Force resetting after 2 minutes');
+            forceResetZoomLock('Safety timeout');
+        }, MAX_ZOOM_LOCK_DURATION);
+    } else {
+        if (_zoomLockTimer) {
+            clearTimeout(_zoomLockTimer);
+            _zoomLockTimer = null;
+        }
+        const duration = _zoomLockStartTime ? ((Date.now() - _zoomLockStartTime) / 1000).toFixed(1) : '?';
+        console.log(`[ZOOM-FIX] Processing flag CLEARED: ${reason} (duration: ${duration}s)`);
+        _zoomLockStartTime = null;
+    }
+}
+
+function forceResetZoomLock(reason) {
+    console.warn(`[ZOOM-FIX] ⚠️ FORCE RESET triggered: ${reason}`);
+    _alertProcessingInProgress = false;
+    _userMovedMapDuringProcessing = false;
+    
+    if (_zoomLockTimer) {
+        clearTimeout(_zoomLockTimer);
+        _zoomLockTimer = null;
+    }
+    
+    zoomToHome('Force reset');
+}
+
+async function zoomToHome(reason) {
+    console.log(`[ZOOM-FIX] Zooming to home position: ${reason}`);
+    
+    try {
+        const zoomPromise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Zoom timeout - 5 seconds elapsed'));
+            }, 5000);
+            
+            map.once('moveend', () => {
+                clearTimeout(timeout);
+                resolve(true);
+            });
+            
+            map.flyTo({
+                center: HOME_CENTER,
+                zoom: HOME_ZOOM,
+                duration: 2000,
+                essential: true
+            });
+        });
+        
+        await zoomPromise;
+        console.log('[ZOOM-FIX] ✓ Zoom to home completed successfully');
+        return true;
+        
+    } catch (error) {
+        console.error('[ZOOM-FIX] ✗ Zoom to home FAILED:', error.message);
+        
+        try {
+            console.log('[ZOOM-FIX] Attempting immediate jump fallback...');
+            map.jumpTo({
+                center: HOME_CENTER,
+                zoom: HOME_ZOOM
+            });
+            console.log('[ZOOM-FIX] ✓ Immediate jump succeeded');
+            return true;
+        } catch (fallbackError) {
+            console.error('[ZOOM-FIX] ✗ Fallback also failed:', fallbackError.message);
+            return false;
+        }
+    }
+}
+
 
 // === Performance: cache bbox per alert ===
 const alertBBoxCache = new Map(); // key -> [minX, minY, maxX, maxY]
@@ -372,7 +457,7 @@ async function performPeriodicAlertCheck() {
         return;
     }
     
-    _alertProcessingInProgress = true;
+    setProcessingFlag(true, '15-min periodic check start');
     _userMovedMapDuringProcessing = false;
     
     try {
@@ -442,11 +527,14 @@ async function performPeriodicAlertCheck() {
                 if (!_userMovedMapDuringProcessing) {
                     console.log(`[15min Check] Zooming BACK OUT to home position (lower 48)...`);
                     console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
-                    map.flyTo({
-                        center: HOME_CENTER,
-                        zoom: HOME_ZOOM,
-                        duration: 2000
-                    });
+                    
+                    const zoomSuccess = await zoomToHome('Periodic check complete');
+                    
+                    if (!zoomSuccess) {
+                        console.error('[15min Check] ⚠️ Zoom-out FAILED - triggering force reset');
+                        forceResetZoomLock('Zoom-out failure');
+                        return;
+                    }
                     
                     await new Promise(resolve => setTimeout(resolve, 2500));
                 } else {
@@ -467,7 +555,7 @@ async function performPeriodicAlertCheck() {
         console.log(`[15min Check] Complete - cycled through ${warningsWithGeometry.length} warnings`);
     } finally {
         // ALWAYS reset the flag, even if there's an error
-        _alertProcessingInProgress = false;
+        setProcessingFlag(false, 'Periodic check finished');
         console.log("[15min Check] Processing flag reset");
     }
 }
@@ -1461,7 +1549,7 @@ async function handleNewAlerts(newAlerts) {
         return;
     }
     
-    _alertProcessingInProgress = true;
+    setProcessingFlag(true, 'New alert processing start');
     _userMovedMapDuringProcessing = false;
     
     try {
@@ -1514,11 +1602,14 @@ async function handleNewAlerts(newAlerts) {
                 if (!_userMovedMapDuringProcessing) {
                     console.log("Zooming BACK OUT to home position (lower 48)...");
                     console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
-                    map.flyTo({
-                        center: HOME_CENTER,
-                        zoom: HOME_ZOOM,
-                        duration: 2000
-                    });
+                    
+                    const zoomSuccess = await zoomToHome('New alert complete');
+                    
+                    if (!zoomSuccess) {
+                        console.error('[Alert] ⚠️ Zoom-out FAILED - triggering force reset');
+                        forceResetZoomLock('Zoom-out failure');
+                        return;
+                    }
                     
                     await new Promise(resolve => setTimeout(resolve, 2500));
                 } else {
@@ -1538,7 +1629,7 @@ async function handleNewAlerts(newAlerts) {
         console.log("Alert processing complete - speech synchronized");
     } finally {
         // ALWAYS reset the flag, even if there's an error
-        _alertProcessingInProgress = false;
+        setProcessingFlag(false, 'New alert processing finished');
         console.log("[Alert] Processing flag reset");
     }
 }
@@ -2756,7 +2847,7 @@ document.getElementById('test-button').addEventListener('click', async () => {
 });
 
 console.log("=".repeat(60));
-console.log("SPEECH SYNCHRONIZATION FIXED + 15-MIN WARNING CHECK");
+console.log("ZOOM FIX APPLIED - TIMEOUT PROTECTION ENABLED");
 console.log("=".repeat(60));
 console.log("[ok] Map stays zoomed until speech completes");
 console.log("[ok] Proper Promise handling implemented");
@@ -2765,6 +2856,9 @@ console.log("[ok] Browser TTS waits for audio completion");
 console.log("[ok] 15-minute periodic WARNING re-zoom enabled");
 console.log("[ok] Zooms to most severe active WARNING every 15 min");
 console.log("[ok] Voice reminder on re-zoom (if voice enabled)");
+console.log("[NEW] 2-minute safety timeout protection");
+console.log("[NEW] Enhanced error handling for zoom operations");
+console.log("[NEW] Automatic force reset if system gets stuck");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
