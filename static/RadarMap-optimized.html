@@ -1043,11 +1043,29 @@ async function speakText(text, priority = 'normal') {
                 console.log('[warn] Natural voice not found, using default browser voice');
             }
             
-            utterance.onend = () => resolve(true);
-            utterance.onerror = () => resolve(false);
+            // CRITICAL FIX: Add timeout to prevent infinite hang
+            const speechTimeout = setTimeout(() => {
+                console.warn('[voice] Speech timeout after 60 seconds - forcing completion');
+                speechSynthesis.cancel();
+                resolve(false);
+            }, 60000); // 60 seconds max
             
+            utterance.onend = () => {
+                clearTimeout(speechTimeout);
+                console.log('[voice] Speech completed successfully');
+                resolve(true);
+            };
+            
+            utterance.onerror = (error) => {
+                clearTimeout(speechTimeout);
+                console.error('[voice] Speech error:', error);
+                resolve(false);
+            };
+            
+            console.log(`[voice] Speaking: "${cleanText.substring(0, 50)}..."`);
             speechSynthesis.speak(utterance);
         } else {
+            console.log('[voice] speechSynthesis not available');
             resolve(false);
         }
     });
