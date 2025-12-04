@@ -758,11 +758,15 @@ async function nationwideWeatherNarration() {
 }
 
 // Start nationwide narration every 12 minutes (to avoid conflict with 15-min alert check)
+// TEMPORARILY DISABLED FOR TESTING
+/*
 setInterval(() => {
     if (speechEnabled && !_alertProcessingInProgress) {
         nationwideWeatherNarration();
     }
 }, 720000); // 12 minutes
+*/
+console.log('[NATIONWIDE] Narrator DISABLED for testing');
 
 
 // === Performance: cache bbox per alert ===
