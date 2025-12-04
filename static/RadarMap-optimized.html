@@ -818,15 +818,28 @@ async function performPeriodicAlertCheck() {
                 const bounds = getAlertBBox(alertFeature);
                 
                 console.log(`[15min Check] Zooming IN to: ${alert.properties?.event}`);
-                
                 console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
-            map.fitBounds(bounds, { 
-                    padding: 50, 
-                    maxZoom: 10,
-                    duration: 2000 
+                
+                // CRITICAL FIX: Wait for fitBounds to actually complete
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        console.warn('[15min Check] fitBounds timeout, continuing anyway');
+                        resolve();
+                    }, 5000);
+                    
+                    map.once('moveend', () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    });
+                    
+                    map.fitBounds(bounds, { 
+                        padding: 50, 
+                        maxZoom: 10,
+                        duration: 2000 
+                    });
                 });
                 
-                await new Promise(resolve => setTimeout(resolve, 2500));
+                await new Promise(resolve => setTimeout(resolve, 500)); // Extra buffer
                 
                 console.log(`[15min Check] Showing popup for: ${alert.properties?.event}`);
                 const popup = showAutoAlertPopup(alert);
@@ -1890,13 +1903,27 @@ async function handleNewAlerts(newAlerts) {
                 
                 console.log("Zooming IN to alert...");
                 console.log('[map] [Map] Auto-zoom to alert bounds at', new Date().toLocaleTimeString());
-            map.fitBounds(bounds, {
-                    padding: 50,
-                    maxZoom: 10,
-                    duration: 2000
+                
+                // CRITICAL FIX: Wait for fitBounds to actually complete
+                await new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        console.warn('[Alert] fitBounds timeout, continuing anyway');
+                        resolve();
+                    }, 5000);
+                    
+                    map.once('moveend', () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    });
+                    
+                    map.fitBounds(bounds, {
+                        padding: 50,
+                        maxZoom: 10,
+                        duration: 2000
+                    });
                 });
                 
-                await new Promise(resolve => setTimeout(resolve, 2500));
+                await new Promise(resolve => setTimeout(resolve, 500)); // Extra buffer
                 
                 console.log("Showing alert popup...");
                 const popup = showAutoAlertPopup(alert);
