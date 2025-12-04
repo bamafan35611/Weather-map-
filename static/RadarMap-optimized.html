@@ -558,7 +558,7 @@ async function panToRegion(regionName, regionData, durationMs = 5000) {
 }
 
 async function nationwideWeatherNarration() {
-    // Don't start if alert processing is active
+    // CRITICAL: Don't start if alert processing is active OR if map is not at home position
     if (_alertProcessingInProgress) {
         console.log('[NATIONWIDE] Skipping - alert processing in progress');
         return;
@@ -567,6 +567,18 @@ async function nationwideWeatherNarration() {
     // Don't start if already running
     if (_nationwideNarrationInProgress) {
         console.log('[NATIONWIDE] Skipping - narration already in progress');
+        return;
+    }
+    
+    // CRITICAL: Check if map is at home position before starting
+    const currentZoom = map.getZoom();
+    const currentCenter = map.getCenter();
+    const isAtHome = Math.abs(currentZoom - HOME_ZOOM) < 0.5 && 
+                     Math.abs(currentCenter.lng - HOME_CENTER[0]) < 5 &&
+                     Math.abs(currentCenter.lat - HOME_CENTER[1]) < 5;
+    
+    if (!isAtHome) {
+        console.log('[NATIONWIDE] Skipping - map not at home position (likely processing alerts)');
         return;
     }
     
@@ -878,6 +890,10 @@ async function performPeriodicAlertCheck() {
                 if (i < warningsWithGeometry.length - 1) {
                     console.log(`[15min Check] Waiting 15 seconds before next warning...`);
                     await new Promise(resolve => setTimeout(resolve, 15000));
+                } else {
+                    // CRITICAL FIX: Wait a bit after the LAST alert too before clearing flag
+                    console.log(`[15min Check] Last alert processed, waiting 5 seconds before releasing lock...`);
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                 }
                 
             } catch (error) {
