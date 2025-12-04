@@ -285,6 +285,10 @@ let watchesVisible = true;
 // Zone geometry cache to avoid repeated API calls
 const zoneGeometryCache = new Map();
 
+// === MEMORY LEAK FIX: Cache size limits ===
+const MAX_CACHE_SIZE = 100; // Limit cache entries
+const MAX_READ_ALERTS = 500; // Limit alert history
+
 let activeWarnings = [];
 let allActiveAlerts = [];
 
@@ -430,6 +434,56 @@ async function zoomToHome(reason) {
         }
     }
 }
+
+
+// === MEMORY LEAK FIX: Periodic cleanup ===
+function cleanupMemory() {
+    console.log('[MEMORY] Running periodic cleanup...');
+    
+    // Clear old alert IDs if set gets too large
+    if (readAlerts.size > MAX_READ_ALERTS) {
+        console.log(`[MEMORY] readAlerts Set too large (${readAlerts.size}), clearing oldest 200 entries`);
+        const alertArray = Array.from(readAlerts);
+        const toRemove = alertArray.slice(0, 200);
+        toRemove.forEach(id => readAlerts.delete(id));
+        console.log(`[MEMORY] readAlerts now: ${readAlerts.size} entries`);
+    }
+    
+    // Clear bbox cache if too large
+    if (alertBBoxCache.size > MAX_CACHE_SIZE) {
+        console.log(`[MEMORY] alertBBoxCache too large (${alertBBoxCache.size}), clearing half`);
+        const cacheArray = Array.from(alertBBoxCache.keys());
+        const toRemove = cacheArray.slice(0, Math.floor(alertBBoxCache.size / 2));
+        toRemove.forEach(key => alertBBoxCache.delete(key));
+        console.log(`[MEMORY] alertBBoxCache now: ${alertBBoxCache.size} entries`);
+    }
+    
+    // Clear zone geometry cache if too large
+    if (zoneGeometryCache.size > MAX_CACHE_SIZE) {
+        console.log(`[MEMORY] zoneGeometryCache too large (${zoneGeometryCache.size}), clearing half`);
+        const cacheArray = Array.from(zoneGeometryCache.keys());
+        const toRemove = cacheArray.slice(0, Math.floor(zoneGeometryCache.size / 2));
+        toRemove.forEach(key => zoneGeometryCache.delete(key));
+        console.log(`[MEMORY] zoneGeometryCache now: ${zoneGeometryCache.size} entries`);
+    }
+    
+    // Clean up old popup elements that may have been orphaned
+    const oldPopups = document.querySelectorAll('.custom-alert-popup, .auto-alert-popup, .custom-outlook-popup');
+    if (oldPopups.length > 5) {
+        console.log(`[MEMORY] Found ${oldPopups.length} popup elements, removing old ones`);
+        oldPopups.forEach((popup, index) => {
+            if (index < oldPopups.length - 2) { // Keep only the 2 most recent
+                popup.remove();
+            }
+        });
+    }
+    
+    console.log('[MEMORY] Cleanup complete');
+    console.log(`[MEMORY] Current sizes - readAlerts: ${readAlerts.size}, bboxCache: ${alertBBoxCache.size}, zoneCache: ${zoneGeometryCache.size}`);
+}
+
+// Run memory cleanup every 30 minutes
+setInterval(cleanupMemory, 1800000); // 30 minutes
 
 
 // === Performance: cache bbox per alert ===
@@ -2343,6 +2397,15 @@ function showAutoAlertPopup(alert) {
     const existingAutoPopups = document.querySelectorAll('.auto-alert-popup');
     existingAutoPopups.forEach(popup => popup.remove());
     
+    // MEMORY LEAK FIX: Also clean up any very old regular popups
+    const allPopups = document.querySelectorAll('.custom-alert-popup, .custom-outlook-popup');
+    if (allPopups.length > 10) {
+        console.log('[MEMORY] Too many popup elements, cleaning up');
+        allPopups.forEach((popup, index) => {
+            if (index < allPopups.length - 3) popup.remove();
+        });
+    }
+    
     const popup = document.createElement('div');
     popup.className = 'auto-alert-popup';
     popup.style.cssText = `
@@ -2847,7 +2910,7 @@ document.getElementById('test-button').addEventListener('click', async () => {
 });
 
 console.log("=".repeat(60));
-console.log("ZOOM FIX APPLIED - TIMEOUT PROTECTION ENABLED");
+console.log("ZOOM FIX + MEMORY MANAGEMENT APPLIED");
 console.log("=".repeat(60));
 console.log("[ok] Map stays zoomed until speech completes");
 console.log("[ok] Proper Promise handling implemented");
@@ -2859,6 +2922,8 @@ console.log("[ok] Voice reminder on re-zoom (if voice enabled)");
 console.log("[NEW] 2-minute safety timeout protection");
 console.log("[NEW] Enhanced error handling for zoom operations");
 console.log("[NEW] Automatic force reset if system gets stuck");
+console.log("[NEW] Memory leak prevention (30-min cleanup cycles)");
+console.log("[NEW] Cache size limits to prevent resource exhaustion");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
