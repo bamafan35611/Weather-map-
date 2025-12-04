@@ -873,17 +873,21 @@ async function performPeriodicAlertCheck() {
                 if (speechEnabled) {
                     try {
                         const reminderText = buildAlertSpeech(alert, { reminder: true, maxAreas: 2 });
-                        console.log(`[15min Check] Speaking: ${reminderText.substring(0, 100)}...`);
-                        await speakText(reminderText, 'periodic-check');
-                        console.log(`[15min Check] ✓ Speech completed`);
+                        console.log(`[15min Check] Starting speech (non-blocking): ${reminderText.substring(0, 100)}...`);
+                        // DON'T await - let speech happen in background!
+                        speakText(reminderText, 'periodic-check').then(() => {
+                            console.log(`[15min Check] ✓ Speech completed in background`);
+                        }).catch(err => {
+                            console.error(`[15min Check] ❌ Speech error:`, err);
+                        });
                     } catch (speechError) {
-                        console.error(`[15min Check] ❌ Speech failed:`, speechError);
+                        console.error(`[15min Check] ❌ Speech build failed:`, speechError);
                     }
                 } else {
                     console.log(`[15min Check] Voice disabled - skipping speech`);
                 }
                 
-                console.log(`[15min Check] Holding zoomed IN for 30 seconds...`);
+                console.log(`[15min Check] Holding zoomed IN for 30 seconds (speech in background)...`);
                 await new Promise(resolve => setTimeout(resolve, 30000));
                 
                 if (popup && popup.parentNode) {
