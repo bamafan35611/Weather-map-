@@ -302,6 +302,22 @@ const MAX_ZOOM_LOCK_DURATION = 120000; // 2 minutes safety timeout
 let _zoomLockStartTime = null;
 let _zoomLockTimer = null;
 
+// === NATIONWIDE NARRATOR: Region definitions ===
+let _nationwideNarrationInProgress = false;
+const US_REGIONS = {
+    'Pacific Northwest': { center: [-122.5, 47.0], zoom: 5.5, states: ['WA', 'OR', 'ID'] },
+    'Northern California': { center: [-122.0, 38.5], zoom: 6.0, states: ['CA'] },
+    'Southwest': { center: [-111.5, 34.5], zoom: 5.5, states: ['AZ', 'NM', 'NV', 'UT'] },
+    'Northern Rockies': { center: [-110.0, 46.5], zoom: 5.5, states: ['MT', 'WY', 'CO'] },
+    'Central Plains': { center: [-98.5, 38.5], zoom: 5.5, states: ['KS', 'OK', 'NE', 'SD', 'ND'] },
+    'Texas': { center: [-99.5, 31.0], zoom: 5.5, states: ['TX'] },
+    'Upper Midwest': { center: [-93.0, 45.0], zoom: 5.5, states: ['MN', 'WI', 'IA', 'MI'] },
+    'Great Lakes': { center: [-84.5, 41.5], zoom: 6.0, states: ['IL', 'IN', 'OH'] },
+    'Southeast': { center: [-84.0, 33.0], zoom: 5.5, states: ['GA', 'AL', 'MS', 'TN', 'KY', 'SC', 'NC', 'FL'] },
+    'Mid-Atlantic': { center: [-77.5, 38.5], zoom: 6.0, states: ['VA', 'WV', 'MD', 'DE', 'PA', 'NJ'] },
+    'Northeast': { center: [-73.0, 43.0], zoom: 6.0, states: ['NY', 'VT', 'NH', 'ME', 'MA', 'CT', 'RI'] }
+};
+
 // Countdown timers (global scope for scheduler access)
 let briefingCountdown = 3600;
 let alertCheckCountdown = 900;
@@ -484,6 +500,257 @@ function cleanupMemory() {
 
 // Run memory cleanup every 30 minutes
 setInterval(cleanupMemory, 1800000); // 30 minutes
+
+
+// === NATIONWIDE NARRATOR: Broadcast-style weather summary ===
+
+function getRegionForState(stateAbbr) {
+    for (const [regionName, regionData] of Object.entries(US_REGIONS)) {
+        if (regionData.states.includes(stateAbbr)) {
+            return regionName;
+        }
+    }
+    return null;
+}
+
+function extractStateFromAreaDesc(areaDesc) {
+    const stateMatch = areaDesc.match(/,\s*([A-Z]{2})(?:\s|;|$)/);
+    if (stateMatch) return stateMatch[1];
+    
+    // Try full state names
+    const stateNames = {
+        'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR', 'california': 'CA',
+        'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE', 'florida': 'FL', 'georgia': 'GA',
+        'hawaii': 'HI', 'idaho': 'ID', 'illinois': 'IL', 'indiana': 'IN', 'iowa': 'IA',
+        'kansas': 'KS', 'kentucky': 'KY', 'louisiana': 'LA', 'maine': 'ME', 'maryland': 'MD',
+        'massachusetts': 'MA', 'michigan': 'MI', 'minnesota': 'MN', 'mississippi': 'MS', 'missouri': 'MO',
+        'montana': 'MT', 'nebraska': 'NE', 'nevada': 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ',
+        'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', 'ohio': 'OH',
+        'oklahoma': 'OK', 'oregon': 'OR', 'pennsylvania': 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+        'south dakota': 'SD', 'tennessee': 'TN', 'texas': 'TX', 'utah': 'UT', 'vermont': 'VT',
+        'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV', 'wisconsin': 'WI', 'wyoming': 'WY'
+    };
+    
+    const lowerDesc = areaDesc.toLowerCase();
+    for (const [stateName, abbr] of Object.entries(stateNames)) {
+        if (lowerDesc.includes(stateName)) {
+            return abbr;
+        }
+    }
+    
+    return null;
+}
+
+async function panToRegion(regionName, regionData, durationMs = 5000) {
+    console.log(`[NATIONWIDE] Panning to ${regionName}`);
+    
+    return new Promise((resolve) => {
+        map.flyTo({
+            center: regionData.center,
+            zoom: regionData.zoom,
+            duration: 2000,
+            essential: true
+        });
+        
+        // Hold on region for specified duration
+        setTimeout(resolve, durationMs);
+    });
+}
+
+async function nationwideWeatherNarration() {
+    // Don't start if alert processing is active
+    if (_alertProcessingInProgress) {
+        console.log('[NATIONWIDE] Skipping - alert processing in progress');
+        return;
+    }
+    
+    // Don't start if already running
+    if (_nationwideNarrationInProgress) {
+        console.log('[NATIONWIDE] Skipping - narration already in progress');
+        return;
+    }
+    
+    console.log('[NATIONWIDE] Starting nationwide weather narration...');
+    _nationwideNarrationInProgress = true;
+    
+    try {
+        // Organize alerts by region
+        const regionAlerts = {};
+        for (const regionName of Object.keys(US_REGIONS)) {
+            regionAlerts[regionName] = {
+                tornadoWarnings: 0,
+                severeThunderstormWarnings: 0,
+                flashFloodWarnings: 0,
+                tornadoWatches: 0,
+                severeThunderstormWatches: 0,
+                winterWarnings: 0,
+                otherWarnings: 0
+            };
+        }
+        
+        // Count alerts by region
+        allActiveAlerts.forEach(alert => {
+            const event = (alert.properties?.event || '').toLowerCase();
+            const areaDesc = alert.properties?.areaDesc || '';
+            
+            const stateAbbr = extractStateFromAreaDesc(areaDesc);
+            if (!stateAbbr) return;
+            
+            const region = getRegionForState(stateAbbr);
+            if (!region || !regionAlerts[region]) return;
+            
+            if (event.includes('tornado warning')) {
+                regionAlerts[region].tornadoWarnings++;
+            } else if (event.includes('severe thunderstorm warning')) {
+                regionAlerts[region].severeThunderstormWarnings++;
+            } else if (event.includes('flash flood warning')) {
+                regionAlerts[region].flashFloodWarnings++;
+            } else if (event.includes('tornado watch')) {
+                regionAlerts[region].tornadoWatches++;
+            } else if (event.includes('severe thunderstorm watch')) {
+                regionAlerts[region].severeThunderstormWatches++;
+            } else if (event.includes('winter') && event.includes('warning')) {
+                regionAlerts[region].winterWarnings++;
+            } else if (event.includes('warning')) {
+                regionAlerts[region].otherWarnings++;
+            }
+        });
+        
+        // Build narration
+        let narration = "Checking conditions across the lower 48. ";
+        
+        // Count total warnings and watches
+        const totalTornadoWarnings = Object.values(regionAlerts).reduce((sum, r) => sum + r.tornadoWarnings, 0);
+        const totalSevereWarnings = Object.values(regionAlerts).reduce((sum, r) => sum + r.severeThunderstormWarnings, 0);
+        const totalFloodWarnings = Object.values(regionAlerts).reduce((sum, r) => sum + r.flashFloodWarnings, 0);
+        const totalWatches = Object.values(regionAlerts).reduce((sum, r) => sum + r.tornadoWatches + r.severeThunderstormWatches, 0);
+        
+        if (totalTornadoWarnings + totalSevereWarnings + totalFloodWarnings === 0) {
+            narration += "Conditions are quiet nationwide with no severe weather warnings at this hour. ";
+        } else {
+            narration += `We're currently tracking severe weather in multiple areas. `;
+            
+            if (totalTornadoWarnings > 0) {
+                narration += `${totalTornadoWarnings} tornado warning${totalTornadoWarnings > 1 ? 's' : ''} active. `;
+            }
+            if (totalSevereWarnings > 0) {
+                narration += `${totalSevereWarnings} severe thunderstorm warning${totalSevereWarnings > 1 ? 's' : ''} in effect. `;
+            }
+            if (totalFloodWarnings > 0) {
+                narration += `${totalFloodWarnings} flash flood warning${totalFloodWarnings > 1 ? 's' : ''} ongoing. `;
+            }
+        }
+        
+        // Speak opening
+        if (speechEnabled) {
+            await speakText(narration, 'nationwide-intro');
+        }
+        
+        // Check for interruption
+        if (_alertProcessingInProgress) {
+            console.log('[NATIONWIDE] Interrupted by alert - stopping narration');
+            _nationwideNarrationInProgress = false;
+            return;
+        }
+        
+        // Pan through regions with activity
+        const regionsWithActivity = [];
+        for (const [regionName, counts] of Object.entries(regionAlerts)) {
+            const totalActivity = counts.tornadoWarnings + counts.severeThunderstormWarnings + 
+                                counts.flashFloodWarnings + counts.tornadoWatches + 
+                                counts.severeThunderstormWatches + counts.winterWarnings;
+            
+            if (totalActivity > 0) {
+                regionsWithActivity.push({ name: regionName, counts, total: totalActivity });
+            }
+        }
+        
+        // Sort by activity level (most severe first)
+        regionsWithActivity.sort((a, b) => b.total - a.total);
+        
+        // Visit top 3-5 most active regions
+        const regionsToVisit = regionsWithActivity.slice(0, 5);
+        
+        for (const region of regionsToVisit) {
+            // Check for interruption before each region
+            if (_alertProcessingInProgress) {
+                console.log('[NATIONWIDE] Interrupted by alert - stopping tour');
+                _nationwideNarrationInProgress = false;
+                await zoomToHome('Nationwide tour interrupted');
+                return;
+            }
+            
+            const regionData = US_REGIONS[region.name];
+            const counts = region.counts;
+            
+            // Pan to region
+            await panToRegion(region.name, regionData, 6000);
+            
+            // Build region-specific narration
+            let regionNarration = `${region.name}. `;
+            const warnings = [];
+            
+            if (counts.tornadoWarnings > 0) {
+                warnings.push(`${counts.tornadoWarnings} tornado warning${counts.tornadoWarnings > 1 ? 's' : ''}`);
+            }
+            if (counts.severeThunderstormWarnings > 0) {
+                warnings.push(`${counts.severeThunderstormWarnings} severe thunderstorm warning${counts.severeThunderstormWarnings > 1 ? 's' : ''}`);
+            }
+            if (counts.flashFloodWarnings > 0) {
+                warnings.push(`${counts.flashFloodWarnings} flash flood warning${counts.flashFloodWarnings > 1 ? 's' : ''}`);
+            }
+            if (counts.winterWarnings > 0) {
+                warnings.push(`${counts.winterWarnings} winter weather warning${counts.winterWarnings > 1 ? 's' : ''}`);
+            }
+            
+            if (warnings.length > 0) {
+                regionNarration += warnings.join(', ') + ' active. ';
+            }
+            
+            if (counts.tornadoWatches > 0 || counts.severeThunderstormWatches > 0) {
+                const watches = [];
+                if (counts.tornadoWatches > 0) watches.push(`${counts.tornadoWatches} tornado watch${counts.tornadoWatches > 1 ? 'es' : ''}`);
+                if (counts.severeThunderstormWatches > 0) watches.push(`${counts.severeThunderstormWatches} severe thunderstorm watch${counts.severeThunderstormWatches > 1 ? 'es' : ''}`);
+                regionNarration += watches.join(' and ') + ' in effect. ';
+            }
+            
+            // Speak region update
+            if (speechEnabled) {
+                await speakText(regionNarration, 'nationwide-region');
+            }
+        }
+        
+        // Return to lower 48 view
+        console.log('[NATIONWIDE] Returning to lower 48 view');
+        await zoomToHome('Nationwide narration complete');
+        
+        // Final summary
+        const closingNarration = `That's your nationwide weather update. We're monitoring ${totalTornadoWarnings + totalSevereWarnings + totalFloodWarnings} warnings and ${totalWatches} watches across the country.`;
+        
+        if (speechEnabled) {
+            await speakText(closingNarration, 'nationwide-closing');
+        }
+        
+        console.log('[NATIONWIDE] Narration complete');
+        
+    } catch (error) {
+        console.error('[NATIONWIDE] Error during narration:', error);
+    } finally {
+        _nationwideNarrationInProgress = false;
+        
+        // Make sure we're back at lower 48
+        if (!_alertProcessingInProgress) {
+            await zoomToHome('Nationwide narration cleanup');
+        }
+    }
+}
+
+// Start nationwide narration every 15 minutes
+setInterval(() => {
+    if (speechEnabled && !_alertProcessingInProgress) {
+        nationwideWeatherNarration();
+    }
+}, 900000); // 15 minutes
 
 
 // === Performance: cache bbox per alert ===
@@ -2910,20 +3177,18 @@ document.getElementById('test-button').addEventListener('click', async () => {
 });
 
 console.log("=".repeat(60));
-console.log("ZOOM FIX + MEMORY MANAGEMENT APPLIED");
+console.log("OPTION 2: NATIONWIDE NARRATOR WITH REGION PANNING");
 console.log("=".repeat(60));
 console.log("[ok] Map stays zoomed until speech completes");
-console.log("[ok] Proper Promise handling implemented");
-console.log("[ok] Azure TTS waits for audio completion");
-console.log("[ok] Browser TTS waits for audio completion");
 console.log("[ok] 15-minute periodic WARNING re-zoom enabled");
-console.log("[ok] Zooms to most severe active WARNING every 15 min");
 console.log("[ok] Voice reminder on re-zoom (if voice enabled)");
 console.log("[NEW] 2-minute safety timeout protection");
 console.log("[NEW] Enhanced error handling for zoom operations");
 console.log("[NEW] Automatic force reset if system gets stuck");
 console.log("[NEW] Memory leak prevention (30-min cleanup cycles)");
-console.log("[NEW] Cache size limits to prevent resource exhaustion");
+console.log("[NEW] NATIONWIDE NARRATOR - broadcasts every 15 min");
+console.log("[NEW] REGION PANNING - visits active weather areas");
+console.log("[NEW] SMART INTERRUPTION - alerts always take priority");
 console.log("=".repeat(60));
 
 // === Performance: single scheduler tick ===
