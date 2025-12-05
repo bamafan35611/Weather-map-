@@ -77,6 +77,23 @@ def favicon():
 def api_test():
     return jsonify({'ok': True})
 
+@app.get('/api/debug/routes')
+def debug_routes():
+    """Debug endpoint to see all registered routes"""
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods - {'HEAD', 'OPTIONS'}),
+            'path': str(rule.rule)
+        })
+    return jsonify({
+        'total_routes': len(routes),
+        'routes': sorted(routes, key=lambda x: x['path']),
+        'local_predictor_available': LOCAL_PREDICTOR_AVAILABLE,
+        'forecast_system_available': FORECAST_SYSTEM_AVAILABLE
+    })
+
 @app.get('/api/weather/alerts')
 def api_alerts():
     # You can merge NWS + custom alerts here
@@ -212,7 +229,7 @@ def api_predictions():
         # Return error but don't break frontend
         return jsonify(data), 200
 
-@app.route('/api/ml/predictions/local', methods=['POST'])
+@app.route('/api/ml/predictions/local', methods=['GET', 'POST'])
 def api_local_predictions():
     """Generate predictions using local model from NWS alerts"""
     if not LOCAL_PREDICTOR_AVAILABLE:
