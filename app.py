@@ -140,6 +140,197 @@ def api_outlooks():
         })
 
     return jsonify({"outlooks": out})
+
+# ----------------------------------------------------------------------
+# National weather summary API (Lower 48, NWS-based)
+# ----------------------------------------------------------------------
+import requests as _requests
+import datetime as _dt
+
+NWS_ALERTS_URL = "https://api.weather.gov/alerts/active"
+
+
+def _national_safe_get(url: str, timeout: int = 8):
+    try:
+        resp = _requests.get(url, timeout=timeout, headers={"User-Agent": "NorthBamaWX NationalBot"})
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        print(f"[national] Failed to fetch {url}: {exc}")
+        return None
+
+
+def _fetch_nws_national_alerts():
+    """Fetch active NWS alerts across the US and return GeoJSON features list."""
+    params = {
+        "status": "actual",
+        "message_type": "alert"
+    }
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    data = _national_safe_get(f"{NWS_ALERTS_URL}?{query}")
+    if not data:
+        return []
+    return data.get("features", [])
+
+
+def _categorize_national_alert(alert):
+    """Simplified national categorization for headlines."""
+    props = (alert or {}).get("properties", {}) or {}
+    event = (props.get("event") or "").lower()
+    area_desc = (props.get("areaDesc") or "")
+    severity = (props.get("severity") or "").lower()
+
+    # Rank by hazard type – mirrors your local tier thinking
+    if "tornado emergency" in event:
+        hazard = "tornado_emergency"
+        rank = 100
+    elif "tornado warning" in event:
+        hazard = "tornado_warning"
+        rank = 95
+    elif "severe thunderstorm warning" in event:
+        hazard = "severe_thunderstorm_warning"
+        rank = 85
+    elif "flash flood emergency" in event:
+        hazard = "flash_flood_emergency"
+        rank = 90
+    elif "flash flood warning" in event:
+        hazard = "flash_flood_warning"
+        rank = 80
+    elif "winter storm warning" in event or "blizzard warning" in event:
+        hazard = "winter_storm_warning"
+        rank = 75
+    elif "snow squall warning" in event:
+        hazard = "snow_squall_warning"
+        rank = 74
+    elif "excessive heat warning" in event or "heat advisory" in event:
+        hazard = "heat"
+        rank = 70
+    elif "red flag warning" in event or "fire weather" in event:
+        hazard = "fire_weather"
+        rank = 65
+    else:
+        hazard = "other"
+        rank = 40
+
+    # Rough regional labeling by state names in areaDesc
+    al = area_desc.lower()
+    regions = []
+    if any(st in al for st in ["texas", "oklahoma", "arkansas", "louisiana"]):
+        regions.append("the Southern Plains and Lower Mississippi Valley")
+    if any(st in al for st in ["alabama", "mississippi", "georgia", "tennessee"]):
+        regions.append("the Deep South and Tennessee Valley")
+    if any(st in al for st in ["kansas", "nebraska", "iowa", "missouri"]):
+        regions.append("the Central Plains and Midwest")
+    if any(st in al for st in ["minnesota", "north dakota", "south dakota", "wisconsin"]):
+        regions.append("the Northern Plains and Upper Midwest")
+    if any(st in al for st in ["colorado", "wyoming", "montana", "idaho", "utah"]):
+        regions.append("the Rockies")
+    if any(st in al for st in ["california", "oregon", "washington", "nevada"]):
+        regions.append("the West Coast and Sierra")
+    if any(st in al for st in ["new york", "pennsylvania", "new jersey", "massachusetts", "maine", "vermont", "connecticut", "rhode island", "new hampshire"]):
+        regions.append("the Northeast")
+    if any(st in al for st in ["florida", "south carolina", "north carolina", "virginia"]):
+        regions.append("the Southeast and Atlantic Coast")
+
+    if not regions:
+        regions.append("parts of the country")
+
+    return {
+        "event": props.get("event") or "",
+        "hazard_type": hazard,
+        "rank": rank,
+        "regions": list(dict.fromkeys(regions)),
+        "area_desc": area_desc,
+        "severity": severity or "unknown"
+    }
+
+
+def _build_national_headlines(features):
+    if not features:
+        return []
+
+    processed = [_categorize_national_alert(a) for a in features]
+    processed.sort(key=lambda x: x["rank"], reverse=True)
+
+    headlines = []
+    seen_hazards = set()
+
+    for item in processed:
+        htype = item["hazard_type"]
+        if htype in seen_hazards:
+            continue
+        seen_hazards.add(htype)
+
+        summary = ""
+        regions = ", ".join(item["regions"])
+
+        if htype == "tornado_emergency":
+            summary = f"Tornado emergencies are in effect across {regions}"
+        elif htype == "tornado_warning":
+            summary = f"Tornado warnings continue for parts of {regions}"
+        elif htype == "severe_thunderstorm_warning":
+            summary = f"Severe thunderstorm warnings are in place across {regions}"
+        elif htype == "flash_flood_emergency":
+            summary = f"Flash flood emergencies are ongoing in {regions}"
+        elif htype == "flash_flood_warning":
+            summary = f"Flash flood warnings are active in {regions}"
+        elif htype == "winter_storm_warning":
+            summary = f"Significant winter weather is impacting {regions}"
+        elif htype == "snow_squall_warning":
+            summary = f"Snow squall warnings are in effect for portions of {regions}"
+        elif htype == "heat":
+            summary = f"Dangerous heat is affecting portions of {regions}"
+        elif htype == "fire_weather":
+            summary = f"Critical fire weather conditions are present across {regions}"
+        else:
+            ev = item["event"] or "A weather alert"
+            summary = f"{ev} is in effect for {regions}"
+
+        headlines.append({
+            "severity": item["severity"],
+            "hazard_type": htype,
+            "regions": item["regions"],
+            "cities": [],
+            "summary": summary
+        })
+
+        if len(headlines) >= 5:
+            break
+
+    return headlines
+
+
+def _build_top_of_hour_script(headlines):
+    now_ct = _dt.datetime.now(_dt.timezone.utc).astimezone()
+    time_str = now_ct.strftime("%-I:%M %p").lstrip('0')
+    parts = [f"It's {time_str} Central. Here's a national weather update for the Lower 48."]
+
+    if not headlines:
+        parts.append("Overall, conditions are relatively quiet across the country. No major hazard areas are highlighted at this time.")
+        return " ".join(parts)
+
+    for h in headlines:
+        parts.append(h["summary"] + ".")
+
+    return " ".join(parts)
+
+
+@app.get('/api/national/summary')
+def api_national_summary():
+    """Return a national top-of-hour script + headline items for your bot to read."""
+    features = _fetch_nws_national_alerts()
+    headlines = _build_national_headlines(features)
+    script = _build_top_of_hour_script(headlines)
+
+    payload = {
+        "generated_at": _dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "top_of_hour_script": script,
+        "headline_items": headlines,
+        "breaking_script": None
+    }
+    return jsonify(payload)
+
+
 @app.get('/api/learning/history')
 def api_history():
     """Return verified forecast history"""
