@@ -212,7 +212,7 @@ def api_predictions():
         # Return error but don't break frontend
         return jsonify(data), 200
 
-@app.post('/api/ml/predictions/local')
+@app.route('/api/ml/predictions/local', methods=['POST'])
 def api_local_predictions():
     """Generate predictions using local model from NWS alerts"""
     if not LOCAL_PREDICTOR_AVAILABLE:
