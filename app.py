@@ -330,6 +330,92 @@ def api_national_summary():
     }
     return jsonify(payload)
 
+
+@app.get('/api/local/current')
+def api_local_current():
+    """Return current local weather for the Tennessee Valley using NWS official data.
+
+    This uses the NWS points API near Athens, Alabama to find the nearest
+    observing station, then returns a simple now-cast payload for the bot.
+    """
+    import math
+    import datetime as _dt
+
+    # Athens, AL approximate location
+    lat = 34.80
+    lon = -86.97
+
+    try:
+        # Step 1: Resolve NWS grid/points info
+        pt = _national_safe_get(f"https://api.weather.gov/points/{lat},{lon}", timeout=6)
+        if not pt:
+            raise RuntimeError("No NWS points response")
+
+        props = pt.get("properties", {}) or {}
+        stations_url = props.get("observationStations")
+        if not stations_url:
+            raise RuntimeError("No observationStations URL in NWS points response")
+
+        # Step 2: Get the first observing station
+        stations = _national_safe_get(stations_url, timeout=6)
+        station_id = None
+        if stations and isinstance(stations.get("features"), list) and stations["features"]:
+            station_id = stations["features"][0]["properties"].get("stationIdentifier")
+
+        if not station_id:
+            raise RuntimeError("No station identifier found for local observations")
+
+        # Step 3: Get the latest observation from that station
+        obs_url = f"https://api.weather.gov/stations/{station_id}/observations/latest"
+        obs = _national_safe_get(obs_url, timeout=6)
+        if not obs:
+            raise RuntimeError("No latest observation data")
+
+        op = (obs.get("properties") or {})
+        temp_c = (op.get("temperature") or {}).get("value")
+        wind_speed_mps = (op.get("windSpeed") or {}).get("value")
+        rel_h = (op.get("relativeHumidity") or {}).get("value")
+        short_forecast = op.get("textDescription") or op.get("rawMessage") or "No detailed description available"
+        ts = op.get("timestamp")
+
+        def c_to_f(c):
+            return c * 9.0 / 5.0 + 32.0 if c is not None else None
+
+        def mps_to_mph(mps):
+            return mps * 2.23694 if mps is not None else None
+
+        temp_f = c_to_f(temp_c)
+        wind_mph = mps_to_mph(wind_speed_mps)
+
+        # Very simple wind chill approximation when cold & breezy
+        wind_chill_f = None
+        if temp_f is not None and wind_mph is not None and temp_f <= 50 and wind_mph >= 3:
+            v = max(wind_mph, 3)
+            t = temp_f
+            wind_chill_f = 35.74 + 0.6215*t - 35.75*(v**0.16) + 0.4275*t*(v**0.16)
+
+        payload = {
+            "source": "NWS",
+            "station_id": station_id,
+            "temp_f": round(temp_f, 1) if temp_f is not None else None,
+            "wind_speed_mph": round(wind_mph, 1) if wind_mph is not None else None,
+            "wind_chill_f": round(wind_chill_f, 1) if wind_chill_f is not None else None,
+            "relative_humidity": round(rel_h, 0) if rel_h is not None else None,
+            "short_forecast": short_forecast,
+            "obs_time": ts,
+            "region_name": "the Tennessee Valley",
+        }
+
+        return jsonify(payload)
+    except Exception as exc:
+        print(f"[local-current] Failed to fetch local NWS current conditions: {exc}")
+        return jsonify({
+            "source": "NWS",
+            "error": str(exc),
+            "region_name": "the Tennessee Valley"
+        }), 502
+
+
 @app.get('/api/learning/history')
 def api_history():
     """Return verified forecast history"""
