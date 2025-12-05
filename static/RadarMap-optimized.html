@@ -973,6 +973,64 @@ async function runHourlyWeatherBroadcast() {
             };
 
 
+// === Event-based priority ranking for alert sequencing ===
+// Higher score = higher priority. This lets tornado emergencies,
+// PDS tornado warnings, and other critical hazards go first.
+const EVENT_PRIORITY_RANKINGS = [
+    { pattern: 'tornado emergency', score: 100 },
+    { pattern: 'pds tornado warning', score: 95 },
+    { pattern: 'pds tornado watch', score: 90 },
+    { pattern: 'eds severe thunderstorm warning', score: 89 },
+    { pattern: 'destructive severe thunderstorm warning (tprob)', score: 88 },
+    { pattern: 'considerable severe thunderstorm warning (tprob)', score: 87 },
+    { pattern: 'severe thunderstorm warning (tprob)', score: 86 },
+    { pattern: 'destructive severe thunderstorm warning', score: 85 },
+    { pattern: 'considerable severe thunderstorm warning', score: 84 },
+    { pattern: 'confirmed tornado warning', score: 83 },
+    { pattern: 'radar indicated tornado warning', score: 82 },
+    { pattern: 'flash flood emergency', score: 81 },
+    { pattern: 'flash flood warning', score: 80 },
+    { pattern: 'snow squall warning', score: 79 },
+    { pattern: 'tornado warning', score: 78 },
+    { pattern: 'severe thunderstorm warning', score: 77 },
+    { pattern: 'special marine warning', score: 76 },
+    { pattern: 'hurricane warning', score: 75 },
+    { pattern: 'tsunami warning', score: 74 },
+    { pattern: 'earthquake warning', score: 73 },
+    { pattern: 'flash flood watch', score: 60 },
+    { pattern: 'severe thunderstorm watch', score: 59 },
+    { pattern: 'tornado watch', score: 58 },
+    { pattern: 'tsunami watch', score: 57 },
+    { pattern: 'tsunami advisory', score: 56 },
+    { pattern: 'hurricane watch', score: 55 },
+    { pattern: 'special weather statement', score: 40 }
+];
+
+function getEventPriorityScoreFromProps(props) {
+    if (!props) return 0;
+    const rawEvent = (props.event || '').toString();
+    const ev = rawEvent.toLowerCase();
+    if (!ev) return 0;
+
+    for (const entry of EVENT_PRIORITY_RANKINGS) {
+        if (ev.includes(entry.pattern)) {
+            return entry.score;
+        }
+    }
+
+    // Generic fallbacks if not explicitly listed
+    if (ev.includes('tornado emergency')) return 100;
+    if (ev.includes('pds') && ev.includes('tornado') && ev.includes('warning')) return 95;
+    if (ev.includes('tornado') && ev.includes('warning')) return 80;
+    if (ev.includes('severe thunderstorm') && ev.includes('warning')) return 75;
+    if (ev.includes('flash flood') && ev.includes('warning')) return 70;
+    if (ev.includes('warning')) return 50;
+    if (ev.includes('watch')) return 40;
+    if (ev.includes('special weather statement')) return 30;
+    return 10;
+}
+
+
 async function runLocalNorthAlabamaBroadcast() {
     try {
         if (!speechEnabled) {
@@ -2252,8 +2310,20 @@ async function handleNewAlerts(newAlerts) {
         console.log("[Alert] Skipping - another alert sequence is already running");
         return;
     }
-    
-    setProcessingFlag(true, 'New alert processing start');
+
+    // Sort alerts so the most critical hazards go first
+    if (Array.isArray(newAlerts) && newAlerts.length > 1) {
+        newAlerts = [...newAlerts].sort((a, b) => {
+            const ap = a.properties || a;
+            const bp = b.properties || b;
+            const sa = getEventPriorityScoreFromProps(ap);
+            const sb = getEventPriorityScoreFromProps(bp);
+            if (sa !== sb) return sb - sa; // higher score first
+            return 0;
+        });
+    }
+
+setProcessingFlag(true, 'New alert processing start');
     _userMovedMapDuringProcessing = false;
     
     try {
