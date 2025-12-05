@@ -412,11 +412,14 @@ def start_verification_loop():
     print("✓ Background verification and retraining loop started")
 
 # ----------------------------------------------------------------------
+# Start background loop (for gunicorn)
+# ----------------------------------------------------------------------
+# Start the loop when the module loads (works with gunicorn)
+start_verification_loop()
+
+# ----------------------------------------------------------------------
 # Entrypoint
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
-    # Start verification loop
-    start_verification_loop()
-    
     port = int(os.environ.get('PORT', '8000'))
     app.run(host='0.0.0.0', port=port)

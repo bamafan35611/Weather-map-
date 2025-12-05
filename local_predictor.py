@@ -32,8 +32,10 @@ class LocalPredictor:
     def fetch_active_alerts(self):
         """Fetch current NWS weather alerts"""
         try:
+            # Try primary API first
             url = 'https://api.weather.gov/alerts/active'
-            response = requests.get(url, timeout=10)
+            headers = {'User-Agent': 'AtmosphericX/1.0 (Weather Learning System)'}
+            response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
             
@@ -44,7 +46,7 @@ class LocalPredictor:
                 
                 # Only process severe weather alerts
                 event = (props.get('event') or '').lower()
-                if any(keyword in event for keyword in ['tornado', 'severe', 'flood', 'wind']):
+                if any(keyword in event for keyword in ['tornado', 'severe', 'flood', 'wind', 'thunderstorm']):
                     alert = {
                         'id': props.get('id'),
                         'event': props.get('event'),
@@ -59,8 +61,11 @@ class LocalPredictor:
                     alerts.append(alert)
             
             return alerts
+        except requests.exceptions.ProxyError:
+            print("⚠️ NWS API blocked by proxy - system will retry on next cycle")
+            return []
         except Exception as e:
-            print(f"Error fetching alerts: {e}")
+            print(f"⚠️ Error fetching alerts: {e}")
             return []
     
     def alert_to_features(self, alert):
