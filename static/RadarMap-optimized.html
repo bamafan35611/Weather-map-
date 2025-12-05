@@ -890,11 +890,7 @@ async function runHourlyWeatherBroadcast() {
         if (!alerts.length) {
             parts.push('Radar is quiet across most of the country right now. No major weather warnings are in effect.');
         } else {
-            const warnings = alerts.filter(a => {
-                const p = a.properties || {};
-                const ev = (p.event || '').toLowerCase();
-                return /warning/.test(ev) || p.isWarning;
-            });
+            const warnings = alerts.filter(a => isActiveWarning(a));
 
             if (!warnings.length) {
                 parts.push('Radar is relatively quiet. There are no major warning products in effect at this time.');
@@ -949,6 +945,34 @@ async function runHourlyWeatherBroadcast() {
     }
 }
 
+
+            const isActiveWarning = (a) => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+
+                const activeStatus = 
+                    (p.status === 'Actual' || p.status === 'actual') &&
+                    (p.messageType === 'Alert' || p.messageType === 'alert');
+
+                const isWarningProduct =
+                    ev.includes('warning') &&
+                    !ev.includes('test');
+
+                return activeStatus && isWarningProduct;
+            };
+
+            const isActiveWatch = (a) => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+
+                const activeStatus = 
+                    (p.status === 'Actual' || p.status === 'actual') &&
+                    (p.messageType === 'Alert' || p.messageType === 'alert');
+
+                return activeStatus && ev.includes('watch');
+            };
+
+
 async function runLocalNorthAlabamaBroadcast() {
     try {
         if (!speechEnabled) {
@@ -957,7 +981,7 @@ async function runLocalNorthAlabamaBroadcast() {
         }
 
         if (typeof _alertProcessingInProgress !== 'undefined' && _alertProcessingInProgress) {
-            console.log('[Local] Alert processing in progress - skipping this :30 update');
+            console.log('[Local] Alert processing in progress - skipping this local update');
             return;
         }
 
@@ -970,49 +994,63 @@ async function runLocalNorthAlabamaBroadcast() {
         });
 
         let parts = [];
-        parts.push(`It's ${timeString} Central. Here's your North Alabama weather update, including Athens and surrounding areas.`);
+        parts.push(`It's ${timeString} Central. Here's your North Alabama and southern Middle Tennessee weather update, including Athens and surrounding areas.`);
 
         if (!alerts.length) {
-            parts.push('Skies are generally quiet across North Alabama at this time, with no major weather alerts in effect.');
+            parts.push('Skies are generally quiet across North Alabama and southern Middle Tennessee at this time, with no major weather alerts in effect.');
         } else {
-            const northAlabamaCounties = [
-                'colbert county', 'cullman county', 'dekalb county', 'franklin county',
-                'jackson county', 'lawrence county', 'lauderdale county', 'limestone county',
-                'madison county', 'marshall county', 'morgan county', 'winston county',
-                'marion county'
+            const coverageCounties = [
+                // North Alabama core + expanded DMA
+                'colbert county', 'cullman county', 'franklin county', 'jackson county',
+                'lawrence county', 'lauderdale county', 'limestone county', 'madison county',
+                'marshall county', 'morgan county', 'marion county', 'winston county',
+                // Southern middle Tennessee
+                'giles county', 'lincoln county', 'franklin county, tn'
             ];
 
             const localAlerts = alerts.filter(a => {
                 const area = ((a.properties?.areaDesc) || '').toLowerCase();
-                return northAlabamaCounties.some(c => area.includes(c));
+                return coverageCounties.some(c => area.includes(c));
             });
 
             if (!localAlerts.length) {
-                parts.push('No significant storms or warnings are currently affecting North Alabama. Expect typical conditions for the area at this time.');
+                parts.push('No significant storms or warnings are currently affecting North Alabama or nearby southern Middle Tennessee. Expect typical conditions for the area at this time.');
             } else {
-                const warnings = localAlerts.filter(a => {
-                    const ev = (a.properties?.event || '').toLowerCase();
-                    return /warning/.test(ev) || a.properties?.isWarning;
-                });
+                const isActiveWarning = (a) => {
+                    const p = a.properties || {};
+                    const ev = (p.event || '').toLowerCase();
+                    const status = (p.status || '').toLowerCase();
+                    const msgType = (p.messageType || '').toLowerCase();
+                    const activeStatus = (status === 'actual') && (msgType === 'alert');
+                    const isWarningProduct = ev.includes('warning') && !ev.includes('test');
+                    return activeStatus && isWarningProduct;
+                };
 
-                const watches = localAlerts.filter(a => {
-                    const ev = (a.properties?.event || '').toLowerCase();
-                    return /watch/.test(ev);
-                });
+                const isActiveWatch = (a) => {
+                    const p = a.properties || {};
+                    const ev = (p.event || '').toLowerCase();
+                    const status = (p.status || '').toLowerCase();
+                    const msgType = (p.messageType || '').toLowerCase();
+                    const activeStatus = (status === 'actual') && (msgType === 'alert');
+                    return activeStatus && ev.includes('watch');
+                };
+
+                const warnings = localAlerts.filter(a => isActiveWarning(a));
+                const watches  = localAlerts.filter(a => isActiveWatch(a));
 
                 if (warnings.length) {
-                    parts.push('Strong weather is impacting parts of North Alabama.');
+                    parts.push('Stronger weather is impacting parts of North Alabama and southern Middle Tennessee.');
 
                     const countBy = (keyword) =>
                         warnings.filter(a =>
                             ((a.properties?.event || '').toLowerCase().includes(keyword))
                         ).length;
 
-                    const tornadoWarn = countBy('tornado warning');
-                    const severeWarn = countBy('severe thunderstorm warning');
-                    const flashFloodWarn = countBy('flash flood warning');
-                    const floodWarn = countBy('flood warning');
-                    const winterWarn = countBy('winter storm warning');
+                    const tornadoWarn     = countBy('tornado warning');
+                    const severeWarn      = countBy('severe thunderstorm warning');
+                    const flashFloodWarn  = countBy('flash flood warning');
+                    const floodWarn       = countBy('flood warning');
+                    const winterStormWarn = countBy('winter storm warning');
 
                     let pieces = [];
                     if (tornadoWarn > 0) {
@@ -1027,30 +1065,29 @@ async function runLocalNorthAlabamaBroadcast() {
                     if (floodWarn > 0 && flashFloodWarn === 0) {
                         pieces.push(`${floodWarn} flood warning${floodWarn > 1 ? 's' : ''}`);
                     }
-                    if (winterWarn > 0) {
-                        pieces.push(`${winterWarn} winter storm warning${winterWarn > 1 ? 's' : ''}`);
+                    if (winterStormWarn > 0) {
+                        pieces.push(`${winterStormWarn} winter storm warning${winterStormWarn > 1 ? 's' : ''}`);
                     }
 
                     if (pieces.length) {
                         const list = pieces.join(', ').replace(/, ([^,]*)$/, ' and $1');
-                        parts.push(`There are currently ${list} in effect across parts of North Alabama.`);
+                        parts.push(`There are currently ${list} in effect across parts of North Alabama and southern Middle Tennessee.`);
                     }
                 } else if (watches.length) {
-                    parts.push('Weather conditions are being monitored across North Alabama with watches in effect, but no warnings at this time.');
+                    parts.push('Weather conditions are being monitored across North Alabama and southern Middle Tennessee with watches in effect, but no warnings at this time.');
                 } else {
-                    parts.push('Showers or general weather are present in or near North Alabama, but no major warnings are active right now.');
+                    parts.push('Showers or general weather are present in or near North Alabama and southern Middle Tennessee, but no major warnings are active right now.');
                 }
             }
         }
 
-        const text = parts.join(' ');
-        console.log('[Local] Speaking North Alabama update:', text);
-        await speakText(text, 'local-north-alabama');
+        const textOut = parts.join(' ');
+        console.log('[Local] Speaking North Alabama update:', textOut);
+        await speakText(textOut, 'local-north-alabama');
     } catch (err) {
         console.error('[Local] Error during North Alabama broadcast:', err);
     }
 }
-
 
 async function performPeriodicAlertCheck() {
     // Prevent concurrent execution
