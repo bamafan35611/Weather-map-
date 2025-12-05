@@ -330,7 +330,6 @@ def api_national_summary():
     }
     return jsonify(payload)
 
-
 @app.get('/api/learning/history')
 def api_history():
     """Return verified forecast history"""
