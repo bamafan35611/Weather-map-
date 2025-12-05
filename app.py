@@ -212,6 +212,39 @@ def api_predictions():
         # Return error but don't break frontend
         return jsonify(data), 200
 
+@app.post('/api/ml/predictions/local')
+def api_local_predictions():
+    """Generate predictions using local model from NWS alerts"""
+    if not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Local predictor not available'
+        }), 503
+    
+    try:
+        # Generate predictions
+        predictions = generate_local_predictions()
+        
+        # Save to database
+        if FORECAST_SYSTEM_AVAILABLE and predictions:
+            for pred in predictions:
+                save_forecast(pred)
+            print(f"✓ Saved {len(predictions)} local predictions to database")
+        
+        return jsonify({
+            'success': True,
+            'count': len(predictions),
+            'predictions': predictions,
+            'message': f'Generated {len(predictions)} predictions from NWS alerts'
+        })
+    
+    except Exception as e:
+        print(f"Error generating local predictions: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.post('/api/learning/forecast')
 def api_save_forecast():
     """Manually save a forecast prediction"""
@@ -347,6 +380,17 @@ def start_verification_loop():
         check_count = 0
         while True:
             try:
+                # Generate local predictions from NWS alerts
+                if LOCAL_PREDICTOR_AVAILABLE:
+                    try:
+                        predictions = generate_local_predictions()
+                        if FORECAST_SYSTEM_AVAILABLE and predictions:
+                            for pred in predictions:
+                                save_forecast(pred)
+                            print(f"✓ Generated and saved {len(predictions)} local predictions")
+                    except Exception as e:
+                        print(f"⚠ Error generating local predictions: {e}")
+                
                 # Run verification every cycle
                 verify_forecasts()
                 check_count += 1
