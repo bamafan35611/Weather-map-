@@ -292,6 +292,10 @@ const MAX_READ_ALERTS = 500; // Limit alert history
 let activeWarnings = [];
 let allActiveAlerts = [];
 
+
+let initialAlertsLoaded = false;  // Prevent auto-zoom on very first alert load
+let initialWarningZoomScheduled = false;  // One-time 15s existing-warning zoom
+let alertSystemReady = false;  // Enable new-alert auto-zoom only after initial 15s zoom
 // Zoom lock prevention
 let _alertProcessingInProgress = false;
 let _userMovedMapDuringProcessing = false;
@@ -787,6 +791,29 @@ function getAlertBBox(featureOrWrapper) {
         return [0,0,0,0];
     }
 }
+
+function scheduleInitialWarningZoom() {
+    if (initialWarningZoomScheduled) {
+        return;
+    }
+    initialWarningZoomScheduled = true;
+    console.log('[InitialZoom] Scheduling initial existing-warning zoom in 15 seconds');
+
+    setTimeout(() => {
+        try {
+            console.log('[InitialZoom] Running initial existing-warning zoom (15s after map load)');
+            // Re-use the 15-minute warning cycle logic for a one-time initial pass
+            performPeriodicAlertCheck();
+            // After this first pass, allow normal new-alert auto-zoom behavior
+            alertSystemReady = true;
+            console.log('[InitialZoom] Initial zoom complete - alert system now fully active');
+        } catch (error) {
+            console.error('[InitialZoom] Error during initial warning zoom:', error);
+            alertSystemReady = true; // Fail-safe: don't permanently block alerts
+        }
+    }, 15000);
+}
+
 async function performPeriodicAlertCheck() {
     // Prevent concurrent execution
     if (_alertProcessingInProgress) {
@@ -1188,6 +1215,9 @@ mapboxgl.accessToken = __mb_token;
         initAlertsLayers();
         fetchAlerts();
         
+        // Schedule a one-time existing-warning zoom 15s after map load
+        scheduleInitialWarningZoom();
+
         console.log("Enhanced weather system ready!");
     });
     
@@ -1435,6 +1465,11 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     const descRaw = (p.description || p.headline || '');
     const desc = descRaw.toLowerCase();
+
+    var hasConfirmedTornado = desc.includes('tornado observed') || desc.includes('confirmed tornado');
+    var isPDS = desc.includes('particularly dangerous situation') || desc.includes('tornado emergency');
+
+
     
     // --- Storm personality/character based on characteristics ---
     let stormPersonality = '';
@@ -1618,8 +1653,6 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     // --- Lead-in style with more natural variation ---
     let intro;
-    const hasConfirmedTornado = desc.includes('tornado observed') || desc.includes('confirmed tornado');
-    const isPDS = desc.includes('particularly dangerous situation') || desc.includes('tornado emergency');
     
     if (isTornado && isWarning) {
         if (hasConfirmedTornado || isPDS) {
@@ -2144,14 +2177,20 @@ async function fetchAlerts() {
         updateActiveWarnings(allAlerts);
         addAlertsToMap(allAlerts);
         
+        
+
+if (!alertSystemReady) {
+        console.log('[Alert] New-alert auto-zoom is disabled until initial 15s zoom completes');
+        console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
+    } else {
         const currentZoom = map.getZoom();
         const currentBounds = map.getBounds();
         let newAlerts = [];
-        
+
         allAlerts.forEach(alert => {
             if (!readAlerts.has(alert.properties.id)) {
                 let shouldAutoProcess = false;
-                
+
                 if (alert.geometry && alert.geometry.coordinates) {
                     try {
                         const alertFeature = {
@@ -2163,9 +2202,9 @@ async function fetchAlerts() {
                             lng: (alertBounds[0] + alertBounds[2]) / 2,
                             lat: (alertBounds[1] + alertBounds[3]) / 2
                         };
-                        
+
                         const isInViewport = currentBounds.contains([alertCenter.lng, alertCenter.lat]);
-                        
+
                         if (alert.properties.priority === 'HIGH') {
                             shouldAutoProcess = isInViewport;
                         } else if (currentZoom <= 7.0 && isInViewport) {
@@ -2175,24 +2214,26 @@ async function fetchAlerts() {
                         console.warn("Error checking alert viewport:", error);
                     }
                 }
-                
+
                 if (shouldAutoProcess) {
                     newAlerts.push(alert);
                 }
-                
+
                 readAlerts.add(alert.properties.id);
             }
         });
-        
+
         if (newAlerts.length > 0) {
             console.log(`Processing ${newAlerts.length} viewport-visible alerts`);
             handleNewAlerts(newAlerts);
         } else {
             console.log("No new alerts in current viewport to process");
         }
-        
+
         console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
-        const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
+    }
+
+const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
         console.log(`[DEBUG] Mappable alerts after filtering: ${mappableAlerts.length}`);
         console.log(`[DEBUG] Alerts filtered out: ${allAlerts.length - mappableAlerts.length}`);
         
