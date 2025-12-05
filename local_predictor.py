@@ -34,7 +34,7 @@ class LocalPredictor:
         try:
             # Try primary API first
             url = 'https://api.weather.gov/alerts/active'
-            headers = {'User-Agent': 'AtmosphericX/1.0 (Weather Learning System)'}
+            headers = {'User-Agent': 'NorthBamaWX/1.0 (Weather Learning System)'}
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
             data = response.json()
