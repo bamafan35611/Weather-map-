@@ -300,6 +300,82 @@ let hourlyBroadcastScheduled = false;   // Top-of-hour national update scheduler
 let localBroadcastScheduled = false;    // :30 North Alabama update scheduler
 
 
+
+// === LEARNING MODE: In-memory tornado warning history (resets at local midnight) ===
+let tornadoHistoryByCounty = {};
+let tornadoHistoryLastResetDate = null;
+
+function resetTornadoHistoryIfNeeded() {
+    try {
+        const now = new Date();
+        const todayKey = now.toISOString().slice(0, 10); // YYYY-MM-DD
+        if (tornadoHistoryLastResetDate !== todayKey) {
+            tornadoHistoryByCounty = {};
+            tornadoHistoryLastResetDate = todayKey;
+            console.log('[Learning] Reset tornado warning history for new day:', todayKey);
+        }
+    } catch (e) {
+        console.warn('[Learning] Failed to reset tornado history:', e);
+    }
+}
+
+function getPrimaryAreaKeyFromAlert(alert) {
+    if (!alert) return null;
+    const p = alert.properties || alert;
+    let area = p.areaDesc || '';
+
+    // Try headline fallback: "... for <area>"
+    if (!area && p.headline) {
+        const m = String(p.headline).match(/for\s+(.+)$/i);
+        if (m && m[1]) {
+            area = m[1];
+        }
+    }
+
+    if (!area) return null;
+
+    // Use the first segment before ';' as a primary area block
+    const semi = String(area).split(';')[0];
+    const parts = semi.split(',');
+    if (!parts.length) return semi.trim();
+
+    // Prefer something like "Limestone County, Alabama"
+    const key = parts.slice(0, 2).join(',').trim();
+    return key || semi.trim();
+}
+
+function registerTornadoWarningForToday(alert) {
+    try {
+        if (!alert) return alert;
+        const p = alert.properties || alert;
+        if (!p) return alert;
+
+        const ev = (p.event || '').toLowerCase();
+        if (!ev.includes('tornado warning') && !ev.includes('tornado emergency')) {
+            // Only track tornado warnings / emergencies in this simple learner
+            return alert;
+        }
+
+        resetTornadoHistoryIfNeeded();
+
+        const key = getPrimaryAreaKeyFromAlert(alert) || 'Unknown area';
+        const prev = tornadoHistoryByCounty[key] || 0;
+        const next = prev + 1;
+        tornadoHistoryByCounty[key] = next;
+
+        // Attach today's count onto the properties so speech builder can use it
+        p._todayTornadoCount = next;
+        p._todayTornadoAreaKey = key;
+
+        console.log('[Learning] Tornado warning count for', key, 'is now', next);
+        return alert;
+    } catch (e) {
+        console.warn('[Learning] Failed to register tornado warning:', e);
+        return alert;
+    }
+}
+
+
 // Zoom lock prevention
 let _alertProcessingInProgress = false;
 let _userMovedMapDuringProcessing = false;
@@ -864,7 +940,6 @@ function scheduleLocalNorthAlabamaUpdates() {
     }, delay);
 }
 
-
 async function runHourlyWeatherBroadcast() {
     try {
         if (!speechEnabled) {
@@ -877,6 +952,7 @@ async function runHourlyWeatherBroadcast() {
             return;
         }
 
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
         const now = new Date();
         const timeString = now.toLocaleTimeString('en-US', {
             timeZone: 'America/Chicago',
@@ -884,37 +960,11 @@ async function runHourlyWeatherBroadcast() {
             minute: '2-digit'
         });
 
-        // Prefer backend-generated national script when available
-        let scriptFromBackend = '';
-        try {
-            const base = (BACKEND_BASE_URL || '').replace(/\/+$/, '');
-            const resp = await fetch(base + '/api/national/summary', { cache: 'no-store' });
-            if (!resp.ok) {
-                console.warn('[Hourly] National API returned status', resp.status);
-            } else {
-                const data = await resp.json();
-                if (data && data.top_of_hour_script) {
-                    scriptFromBackend = data.top_of_hour_script;
-                }
-            }
-        } catch (e) {
-            console.warn('[Hourly] National API fetch failed, falling back to front-end summary:', e);
-        }
-
-        if (scriptFromBackend && typeof scriptFromBackend === 'string') {
-            const text = scriptFromBackend;
-            console.log('[Hourly] Speaking backend national update:', text);
-            await speakText(text, 'hourly-broadcast');
-            return;
-        }
-
-        // Fallback: derive a simple national summary from active alerts already on the map
-        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
         let parts = [];
         parts.push(`It's ${timeString} Central. Here's a nationwide weather update.`);
 
         if (!alerts.length) {
-            parts.append('Radar is quiet across most of the country right now. No major weather warnings are in effect.');
+            parts.push('Radar is quiet across most of the country right now. No major weather warnings are in effect.');
         } else {
             const warnings = alerts.filter(a => isActiveWarning(a));
 
@@ -964,13 +1014,12 @@ async function runHourlyWeatherBroadcast() {
         }
 
         const text = parts.join(' ');
-        console.log('[Hourly] Speaking fallback hourly national update:', text);
+        console.log('[Hourly] Speaking hourly national update:', text);
         await speakText(text, 'hourly-broadcast');
     } catch (err) {
         console.error('[Hourly] Error during hourly broadcast:', err);
     }
 }
-
 
 
             const isActiveWarning = (a) => {
@@ -1646,82 +1695,7 @@ function addRadarLayer() {
         id: 'radar-layer',
         type: 'raster',
         source: 'radar',
-        paint: {
-            'raster-opacity': 0.6
-        }
-    });
-    
-    updateRadarStatus("Live - NEXRAD");
-    updateRadarTimestamp();
-    
-    setInterval(refreshRadar, RADAR_REFRESH_INTERVAL * 1000); // Convert seconds to milliseconds
-}
-
-function setupCountyVisibility() {
-    console.log("Setting up zoom-based county visibility...");
-    
-    fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
-        .then(response => response.json())
-        .then(countyData => {
-            map.addSource('counties', {
-                type: 'geojson',
-                data: countyData
-            });
-            
-            map.addLayer({
-                id: 'county-borders',
-                type: 'line',
-                source: 'counties',
-                paint: {
-                    'line-color': '#ffffff',
-                    'line-width': 0.3,
-                    'line-opacity': 0
-                }
-            });
-            
-            map.addLayer({
-                id: 'county-labels',
-                type: 'symbol',
-                source: 'counties',
-                layout: {
-                    'text-field': ['get', 'NAME'],
-                    'text-font': ['Open Sans Regular'],
-                    'text-size': 10,
-                    'text-anchor': 'center'
-                },
-                paint: {
-                    'text-color': '#ffffff',
-                    'text-opacity': 0
-                }
-            });
-            
-            updateCountyVisibility();
-            console.log("County system ready");
-        })
-        .catch(error => {
-            console.error("Error loading counties:", error);
-        });
-}
-
-function updateCountyVisibility() {
-    const currentZoom = map.getZoom();
-    const shouldShowCounties = currentZoom >= 8;
-    
-    if (shouldShowCounties && !countyLayerVisible) {
-        map.setPaintProperty('county-borders', 'line-opacity', 1.0);
-        map.setPaintProperty('county-labels', 'text-opacity', 0.7);
-        countyLayerVisible = true;
-        document.getElementById('county-status').textContent = 'Visible';
-    } else if (!shouldShowCounties && countyLayerVisible) {
-        map.setPaintProperty('county-borders', 'line-opacity', 0);
-        map.setPaintProperty('county-labels', 'text-opacity', 0);
-        countyLayerVisible = false;
-        document.getElementById('county-status').textContent = 'Hidden';
-    }
-}
-
-
-function buildAlertSpeech(alertFeature, options = {}) {
+        pfunction buildAlertSpeech(alertFeature, options = {}) {
     const p = (alertFeature && alertFeature.properties) ? alertFeature.properties : (alertFeature || {});
 
     const rawEvent = p.event || 'Weather Alert';
@@ -2280,6 +2254,72 @@ function buildAlertSpeech(alertFeature, options = {}) {
         }
     }
 
+
+
+    // Add simple history-based context for tornado warnings:
+    // if this is the second or later tornado warning today for this area,
+    // mention that to sound more like a live meteorologist.
+    if (isWarning && isTornado && p && typeof p._todayTornadoCount === 'number') {
+        const c = p._todayTornadoCount;
+        const areaKey = p._todayTornadoAreaKey || areaText || 'this area';
+        if (c === 2) {
+            full += ` This is the second tornado warning for ${areaKey} tonight.`;
+        } else if (c >= 3) {
+            full += ` There have now been ${c} tornado warnings issued for ${areaKey} so far tonight.`;
+        }
+    }
+
+    if (options.reminder) {
+        const reminderPhrases = [
+            'Just a reminder, ',
+            'Quick reminder, ',
+            'Heads up, ',
+            'Still in effect, ',
+            'We\'re still under ',
+            'Update on '
+        ];
+        
+        // Check if this is an update/extension
+        const isUpdate = options.isUpdate || desc.includes('has been extended') || desc.includes('updated');
+        const isExpired = options.isExpired || desc.includes('has been dropped') || desc.includes('cancelled');
+        
+        if (isExpired) {
+            const expiredPhrases = [
+                'Good news, the ',
+                'Update: the ',
+                'The '
+            ];
+            full = pick(expiredPhrases) + event.toLowerCase() + ' has been allowed to expire for ' + areaText + '. Conditions have improved.';
+        } else if (isUpdate) {
+            const updatePhrases = [
+                'Update on that ',
+                'The ',
+                'An update: the '
+            ];
+            const extendedPhrases = [
+                ' has been extended.',
+                ' remains in effect.',
+                ' is still active.'
+            ];
+            full = pick(updatePhrases) + event.toLowerCase() + pick(extendedPhrases);
+            full += stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
+        } else {
+            // For "we're still under" format, adjust the intro slightly
+            if (reminderPhrases[4] && Math.random() < 0.2) {
+                // Use "we're still under" 20% of the time
+                full = 'We\'re still under ' + intro.replace(/^(A |The |We have |There\'s )/, '').toLowerCase();
+                full += stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
+            } else {
+                full = pick(reminderPhrases.slice(0, 4)) + intro.charAt(0).toLowerCase() + intro.slice(1);
+                full += stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
+            }
+        }
+    }
+
+    return full.replace(/\\s+/g, ' ').trim();full = timePrefix + intro.charAt(0).toLowerCase() + intro.slice(1) + stormPersonality + hazardText + radarObservation + motionText + communityText + ' ' + action + listenFor + signOff;
+        }
+    }
+
     if (options.reminder) {
         const reminderPhrases = [
             'Just a reminder, ',
@@ -2394,9 +2434,12 @@ setProcessingFlag(true, 'New alert processing start');
                 
                 console.log("Showing alert popup...");
                 const popup = showAutoAlertPopup(alert);
-                
+
                 if (speechEnabled) {
-                    const alertSpeech = buildAlertSpeech(alert);
+                    // Register this alert with the simple in-memory learner so we can mention
+                    // if this is the second or third tornado warning tonight for a given area.
+                    const trackedAlert = registerTornadoWarningForToday(alert);
+                    const alertSpeech = buildAlertSpeech(trackedAlert);
                     console.log("Speaking alert - map will stay zoomed for 30 seconds...");
                     speakText(alertSpeech, 'alert');
                     console.log("Holding zoom for 30 seconds...");
