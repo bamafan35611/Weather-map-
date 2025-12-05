@@ -292,11 +292,13 @@ const MAX_READ_ALERTS = 500; // Limit alert history
 let activeWarnings = [];
 let allActiveAlerts = [];
 
-
+// Local & national speech scheduling
 let initialWarningZoomScheduled = false;
-let alertSystemReady = false;
-let latestAllAlerts = [];
-let hourlyBroadcastScheduled = false;
+let alertSystemReady = false;           // Enable new-alert auto-zoom only after first zoom cycle
+let latestAllAlerts = [];               // Snapshot of last alerts for summaries
+let hourlyBroadcastScheduled = false;   // Top-of-hour national update scheduler
+let localBroadcastScheduled = false;    // :30 North Alabama update scheduler
+
 
 // Zoom lock prevention
 let _alertProcessingInProgress = false;
@@ -812,8 +814,7 @@ function scheduleInitialWarningZoom() {
             console.log('[InitialZoom] Initial zoom complete - alert system now fully active');
         } catch (error) {
             console.error('[InitialZoom] Error during initial warning zoom:', error);
-            // Fail-safe: don't permanently block alerts
-            alertSystemReady = true;
+            alertSystemReady = true; // Fail-safe
         }
     }, 15000);
 }
@@ -829,11 +830,37 @@ function scheduleTopOfHourUpdates() {
 
     const delay = Math.max(msToNextHour, 10000);
 
-    console.log(`[Hourly] First hourly broadcast in ~${Math.round(delay / 1000)} seconds`);
+    console.log(`[Hourly] First hourly national broadcast in ~${Math.round(delay / 1000)} seconds`);
 
     setTimeout(() => {
         runHourlyWeatherBroadcast();
         setInterval(runHourlyWeatherBroadcast, 60 * 60 * 1000); // every hour
+    }, delay);
+}
+
+function scheduleLocalNorthAlabamaUpdates() {
+    if (localBroadcastScheduled) return;
+    localBroadcastScheduled = true;
+
+    const now = new Date();
+    // Time until next :30 past the hour
+    let minutes = now.getMinutes();
+    let seconds = now.getSeconds();
+    let ms;
+
+    if (minutes < 30) {
+        ms = ((30 - minutes) * 60 - seconds) * 1000 - now.getMilliseconds();
+    } else {
+        ms = ((60 - minutes + 30) * 60 - seconds) * 1000 - now.getMilliseconds();
+    }
+
+    const delay = Math.max(ms, 15000);
+
+    console.log(`[Local] First North Alabama broadcast in ~${Math.round(delay / 1000)} seconds`);
+
+    setTimeout(() => {
+        runLocalNorthAlabamaBroadcast();
+        setInterval(runLocalNorthAlabamaBroadcast, 60 * 60 * 1000); // every hour at :30
     }, delay);
 }
 
@@ -844,7 +871,6 @@ async function runHourlyWeatherBroadcast() {
             return;
         }
 
-        // Don't talk over an active alert broadcast
         if (typeof _alertProcessingInProgress !== 'undefined' && _alertProcessingInProgress) {
             console.log('[Hourly] Alert processing in progress - skipping this hour');
             return;
@@ -862,7 +888,7 @@ async function runHourlyWeatherBroadcast() {
         parts.push(`It's ${timeString} Central. Here's a nationwide weather update.`);
 
         if (!alerts.length) {
-            parts.push('Radar is quiet across most of the country right now. No major warnings are in effect.');
+            parts.push('Radar is quiet across most of the country right now. No major weather warnings are in effect.');
         } else {
             const warnings = alerts.filter(a => {
                 const p = a.properties || {};
@@ -871,7 +897,7 @@ async function runHourlyWeatherBroadcast() {
             });
 
             if (!warnings.length) {
-                parts.push('Radar is relatively quiet. There are no major weather warnings in effect at this time.');
+                parts.push('Radar is relatively quiet. There are no major warning products in effect at this time.');
             } else {
                 const countBy = (keyword) =>
                     warnings.filter(a =>
@@ -920,6 +946,108 @@ async function runHourlyWeatherBroadcast() {
         await speakText(text, 'hourly-broadcast');
     } catch (err) {
         console.error('[Hourly] Error during hourly broadcast:', err);
+    }
+}
+
+async function runLocalNorthAlabamaBroadcast() {
+    try {
+        if (!speechEnabled) {
+            console.log('[Local] Speech disabled - skipping North Alabama broadcast');
+            return;
+        }
+
+        if (typeof _alertProcessingInProgress !== 'undefined' && _alertProcessingInProgress) {
+            console.log('[Local] Alert processing in progress - skipping this :30 update');
+            return;
+        }
+
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+
+        let parts = [];
+        parts.push(`It's ${timeString} Central. Here's your North Alabama weather update, including Athens and surrounding areas.`);
+
+        if (!alerts.length) {
+            parts.push('Skies are generally quiet across North Alabama at this time, with no major weather alerts in effect.');
+        } else {
+            const northAlabamaCounties = [
+                'colbert county', 'cullman county', 'dekalb county', 'franklin county',
+                'jackson county', 'lawrence county', 'lauderdale county', 'limestone county',
+                'madison county', 'marshall county', 'morgan county', 'winston county',
+                'marion county'
+            ];
+
+            const localAlerts = alerts.filter(a => {
+                const area = ((a.properties?.areaDesc) || '').toLowerCase();
+                return northAlabamaCounties.some(c => area.includes(c));
+            });
+
+            if (!localAlerts.length) {
+                parts.push('No significant storms or warnings are currently affecting North Alabama. Expect typical conditions for the area at this time.');
+            } else {
+                const warnings = localAlerts.filter(a => {
+                    const ev = (a.properties?.event || '').toLowerCase();
+                    return /warning/.test(ev) || a.properties?.isWarning;
+                });
+
+                const watches = localAlerts.filter(a => {
+                    const ev = (a.properties?.event || '').toLowerCase();
+                    return /watch/.test(ev);
+                });
+
+                if (warnings.length) {
+                    parts.push('Strong weather is impacting parts of North Alabama.');
+
+                    const countBy = (keyword) =>
+                        warnings.filter(a =>
+                            ((a.properties?.event || '').toLowerCase().includes(keyword))
+                        ).length;
+
+                    const tornadoWarn = countBy('tornado warning');
+                    const severeWarn = countBy('severe thunderstorm warning');
+                    const flashFloodWarn = countBy('flash flood warning');
+                    const floodWarn = countBy('flood warning');
+                    const winterWarn = countBy('winter storm warning');
+
+                    let pieces = [];
+                    if (tornadoWarn > 0) {
+                        pieces.push(`${tornadoWarn} tornado warning${tornadoWarn > 1 ? 's' : ''}`);
+                    }
+                    if (severeWarn > 0) {
+                        pieces.push(`${severeWarn} severe thunderstorm warning${severeWarn > 1 ? 's' : ''}`);
+                    }
+                    if (flashFloodWarn > 0) {
+                        pieces.push(`${flashFloodWarn} flash flood warning${flashFloodWarn > 1 ? 's' : ''}`);
+                    }
+                    if (floodWarn > 0 && flashFloodWarn === 0) {
+                        pieces.push(`${floodWarn} flood warning${floodWarn > 1 ? 's' : ''}`);
+                    }
+                    if (winterWarn > 0) {
+                        pieces.push(`${winterWarn} winter storm warning${winterWarn > 1 ? 's' : ''}`);
+                    }
+
+                    if (pieces.length) {
+                        const list = pieces.join(', ').replace(/, ([^,]*)$/, ' and $1');
+                        parts.push(`There are currently ${list} in effect across parts of North Alabama.`);
+                    }
+                } else if (watches.length) {
+                    parts.push('Weather conditions are being monitored across North Alabama with watches in effect, but no warnings at this time.');
+                } else {
+                    parts.push('Showers or general weather are present in or near North Alabama, but no major warnings are active right now.');
+                }
+            }
+        }
+
+        const text = parts.join(' ');
+        console.log('[Local] Speaking North Alabama update:', text);
+        await speakText(text, 'local-north-alabama');
+    } catch (err) {
+        console.error('[Local] Error during North Alabama broadcast:', err);
     }
 }
 
@@ -1325,10 +1453,12 @@ mapboxgl.accessToken = __mb_token;
         initAlertsLayers();
         fetchAlerts();
         
-        // Schedule a one-time existing-warning zoom 15s after map load
+        // Schedule a one-time zoom into existing warnings 15s after map load
         scheduleInitialWarningZoom();
         // Schedule top-of-the-hour national weather updates
         scheduleTopOfHourUpdates();
+        // Schedule :30 North Alabama local weather updates
+        scheduleLocalNorthAlabamaUpdates();
         
         console.log("Enhanced weather system ready!");
     });
@@ -1765,8 +1895,6 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     // --- Lead-in style with more natural variation ---
     let intro;
-    
-    
     if (isTornado && isWarning) {
         if (hasConfirmedTornado || isPDS) {
             const emergencyIntros = [
@@ -2293,60 +2421,60 @@ async function fetchAlerts() {
 
         
         if (!alertSystemReady) {
-        console.log('[Alert] New-alert auto-zoom is disabled until initial 15s zoom completes');
-        console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
-    } else {
-    const currentZoom = map.getZoom();
-            const currentBounds = map.getBounds();
-            let newAlerts = [];
-        
-            allAlerts.forEach(alert => {
-                if (!readAlerts.has(alert.properties.id)) {
-                    let shouldAutoProcess = false;
-                
-                    if (alert.geometry && alert.geometry.coordinates) {
-                        try {
-                            const alertFeature = {
-                                type: 'FeatureCollection',
-                                features: [alert]
-                            };
-                            const alertBounds = getAlertBBox(alertFeature);
-                            const alertCenter = {
-                                lng: (alertBounds[0] + alertBounds[2]) / 2,
-                                lat: (alertBounds[1] + alertBounds[3]) / 2
-                            };
-                        
-                            const isInViewport = currentBounds.contains([alertCenter.lng, alertCenter.lat]);
-                        
-                            if (alert.properties.priority === 'HIGH') {
-                                shouldAutoProcess = isInViewport;
-                            } else if (currentZoom <= 7.0 && isInViewport) {
-                                shouldAutoProcess = true;
-                            }
-                        } catch (error) {
-                            console.warn("Error checking alert viewport:", error);
-                        }
-                    }
-                
-                    if (shouldAutoProcess) {
-                        newAlerts.push(alert);
-                    }
-                
-                    readAlerts.add(alert.properties.id);
-                }
-            });
-        
-            if (newAlerts.length > 0) {
-                console.log(`Processing ${newAlerts.length} viewport-visible alerts`);
-                handleNewAlerts(newAlerts);
-            } else {
-                console.log("No new alerts in current viewport to process");
-            }
-        
+            console.log('[Alert] New-alert auto-zoom is disabled until initial zoom cycle completes');
             console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
+        } else {
+            const currentZoom = map.getZoom();
+                    const currentBounds = map.getBounds();
+                    let newAlerts = [];
         
-    }
-const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
+                    allAlerts.forEach(alert => {
+                        if (!readAlerts.has(alert.properties.id)) {
+                            let shouldAutoProcess = false;
+                
+                            if (alert.geometry && alert.geometry.coordinates) {
+                                try {
+                                    const alertFeature = {
+                                        type: 'FeatureCollection',
+                                        features: [alert]
+                                    };
+                                    const alertBounds = getAlertBBox(alertFeature);
+                                    const alertCenter = {
+                                        lng: (alertBounds[0] + alertBounds[2]) / 2,
+                                        lat: (alertBounds[1] + alertBounds[3]) / 2
+                                    };
+                        
+                                    const isInViewport = currentBounds.contains([alertCenter.lng, alertCenter.lat]);
+                        
+                                    if (alert.properties.priority === 'HIGH') {
+                                        shouldAutoProcess = isInViewport;
+                                    } else if (currentZoom <= 7.0 && isInViewport) {
+                                        shouldAutoProcess = true;
+                                    }
+                                } catch (error) {
+                                    console.warn("Error checking alert viewport:", error);
+                                }
+                            }
+                
+                            if (shouldAutoProcess) {
+                                newAlerts.push(alert);
+                            }
+                
+                            readAlerts.add(alert.properties.id);
+                        }
+                    });
+        
+                    if (newAlerts.length > 0) {
+                        console.log(`Processing ${newAlerts.length} viewport-visible alerts`);
+                        handleNewAlerts(newAlerts);
+                    } else {
+                        console.log("No new alerts in current viewport to process");
+                    }
+        
+                    console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
+
+        }
+        const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
         console.log(`[DEBUG] Mappable alerts after filtering: ${mappableAlerts.length}`);
         console.log(`[DEBUG] Alerts filtered out: ${allAlerts.length - mappableAlerts.length}`);
         
