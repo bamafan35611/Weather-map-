@@ -6,6 +6,16 @@ from flask import Flask, send_from_directory, jsonify, request, Response
 from flask_cors import CORS
 from ml_bridge import get_ml_predictions  # Fetch ML from local PC
 
+# Import local prediction capability
+try:
+    from local_predictor import generate_local_predictions
+    LOCAL_PREDICTOR_AVAILABLE = True
+    print("✓ Local predictor loaded")
+except ImportError as e:
+    print(f"⚠ Local predictor not available: {e}")
+    LOCAL_PREDICTOR_AVAILABLE = False
+    generate_local_predictions = None
+
 # Import forecast tracking system
 try:
     from forecast_db import (

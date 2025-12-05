@@ -44,7 +44,13 @@ def get_ml_predictions():
         url = f"{LOCAL_ML_URL}/api/ml/predictions-external"
         logger.info(f"Fetching ML data from: {url}")
         
-        response = requests.get(url, timeout=10)
+        # Add ngrok header to bypass browser warning
+        headers = {
+            'ngrok-skip-browser-warning': 'true',
+            'User-Agent': 'AtmosphericX-Learning-System/1.0'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
         
         if response.ok:
             data = response.json()
