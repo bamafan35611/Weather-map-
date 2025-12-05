@@ -272,7 +272,7 @@ const HOME_CENTER = [-96.5, 38.5];
 const HOME_ZOOM = 4.2;
 
 let map;
-let speechEnabled = false;
+let speechEnabled = true;
 let currentForecast = null;
 let backendConnected = false;
 let connectionRetries = 0;
@@ -293,9 +293,11 @@ let activeWarnings = [];
 let allActiveAlerts = [];
 
 
-let initialAlertsLoaded = false;  // Prevent auto-zoom on very first alert load
-let initialWarningZoomScheduled = false;  // One-time 15s existing-warning zoom
-let alertSystemReady = false;  // Enable new-alert auto-zoom only after initial 15s zoom
+let initialWarningZoomScheduled = false;
+let alertSystemReady = false;
+let latestAllAlerts = [];
+let hourlyBroadcastScheduled = false;
+
 // Zoom lock prevention
 let _alertProcessingInProgress = false;
 let _userMovedMapDuringProcessing = false;
@@ -792,6 +794,7 @@ function getAlertBBox(featureOrWrapper) {
     }
 }
 
+
 function scheduleInitialWarningZoom() {
     if (initialWarningZoomScheduled) {
         return;
@@ -809,10 +812,117 @@ function scheduleInitialWarningZoom() {
             console.log('[InitialZoom] Initial zoom complete - alert system now fully active');
         } catch (error) {
             console.error('[InitialZoom] Error during initial warning zoom:', error);
-            alertSystemReady = true; // Fail-safe: don't permanently block alerts
+            // Fail-safe: don't permanently block alerts
+            alertSystemReady = true;
         }
     }, 15000);
 }
+
+function scheduleTopOfHourUpdates() {
+    if (hourlyBroadcastScheduled) return;
+    hourlyBroadcastScheduled = true;
+
+    const now = new Date();
+    const msToNextHour =
+        ((60 - now.getMinutes()) * 60 - now.getSeconds()) * 1000
+        - now.getMilliseconds();
+
+    const delay = Math.max(msToNextHour, 10000);
+
+    console.log(`[Hourly] First hourly broadcast in ~${Math.round(delay / 1000)} seconds`);
+
+    setTimeout(() => {
+        runHourlyWeatherBroadcast();
+        setInterval(runHourlyWeatherBroadcast, 60 * 60 * 1000); // every hour
+    }, delay);
+}
+
+async function runHourlyWeatherBroadcast() {
+    try {
+        if (!speechEnabled) {
+            console.log('[Hourly] Speech disabled - skipping hourly broadcast');
+            return;
+        }
+
+        // Don't talk over an active alert broadcast
+        if (typeof _alertProcessingInProgress !== 'undefined' && _alertProcessingInProgress) {
+            console.log('[Hourly] Alert processing in progress - skipping this hour');
+            return;
+        }
+
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const now = new Date();
+        const timeString = now.toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+
+        let parts = [];
+        parts.push(`It's ${timeString} Central. Here's a nationwide weather update.`);
+
+        if (!alerts.length) {
+            parts.push('Radar is quiet across most of the country right now. No major warnings are in effect.');
+        } else {
+            const warnings = alerts.filter(a => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+                return /warning/.test(ev) || p.isWarning;
+            });
+
+            if (!warnings.length) {
+                parts.push('Radar is relatively quiet. There are no major weather warnings in effect at this time.');
+            } else {
+                const countBy = (keyword) =>
+                    warnings.filter(a =>
+                        ((a.properties?.event || '').toLowerCase().includes(keyword))
+                    ).length;
+
+                const tornadoWarn = countBy('tornado warning');
+                const severeWarn = countBy('severe thunderstorm warning');
+                const flashFloodWarn = countBy('flash flood warning');
+                const floodWarn = countBy('flood warning');
+                const winterWarn = countBy('winter storm warning');
+                const highWindWarn = countBy('high wind warning');
+
+                let headlinePieces = [];
+
+                if (tornadoWarn > 0) {
+                    headlinePieces.push(`${tornadoWarn} tornado warning${tornadoWarn > 1 ? 's' : ''}`);
+                }
+                if (severeWarn > 0) {
+                    headlinePieces.push(`${severeWarn} severe thunderstorm warning${severeWarn > 1 ? 's' : ''}`);
+                }
+                if (flashFloodWarn > 0) {
+                    headlinePieces.push(`${flashFloodWarn} flash flood warning${flashFloodWarn > 1 ? 's' : ''}`);
+                }
+                if (floodWarn > 0 && flashFloodWarn === 0) {
+                    headlinePieces.push(`${floodWarn} flood warning${floodWarn > 1 ? 's' : ''}`);
+                }
+                if (winterWarn > 0) {
+                    headlinePieces.push(`${winterWarn} winter storm warning${winterWarn > 1 ? 's' : ''}`);
+                }
+                if (highWindWarn > 0) {
+                    headlinePieces.push(`${highWindWarn} high wind warning${highWindWarn > 1 ? 's' : ''}`);
+                }
+
+                if (headlinePieces.length) {
+                    const list = headlinePieces.join(', ').replace(/, ([^,]*)$/, ' and $1');
+                    parts.push(`There are currently ${list} in effect across parts of the country.`);
+                } else {
+                    parts.push('Radar is active but there are no major warning products in effect at this time.');
+                }
+            }
+        }
+
+        const text = parts.join(' ');
+        console.log('[Hourly] Speaking hourly national update:', text);
+        await speakText(text, 'hourly-broadcast');
+    } catch (err) {
+        console.error('[Hourly] Error during hourly broadcast:', err);
+    }
+}
+
 
 async function performPeriodicAlertCheck() {
     // Prevent concurrent execution
@@ -1217,7 +1327,9 @@ mapboxgl.accessToken = __mb_token;
         
         // Schedule a one-time existing-warning zoom 15s after map load
         scheduleInitialWarningZoom();
-
+        // Schedule top-of-the-hour national weather updates
+        scheduleTopOfHourUpdates();
+        
         console.log("Enhanced weather system ready!");
     });
     
@@ -1653,6 +1765,7 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
     // --- Lead-in style with more natural variation ---
     let intro;
+    
     
     if (isTornado && isWarning) {
         if (hasConfirmedTornado || isPDS) {
@@ -2176,63 +2289,63 @@ async function fetchAlerts() {
         
         updateActiveWarnings(allAlerts);
         addAlertsToMap(allAlerts);
-        
-        
+        latestAllAlerts = allAlerts;
 
-if (!alertSystemReady) {
+        
+        if (!alertSystemReady) {
         console.log('[Alert] New-alert auto-zoom is disabled until initial 15s zoom completes');
         console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
     } else {
-        const currentZoom = map.getZoom();
-        const currentBounds = map.getBounds();
-        let newAlerts = [];
-
-        allAlerts.forEach(alert => {
-            if (!readAlerts.has(alert.properties.id)) {
-                let shouldAutoProcess = false;
-
-                if (alert.geometry && alert.geometry.coordinates) {
-                    try {
-                        const alertFeature = {
-                            type: 'FeatureCollection',
-                            features: [alert]
-                        };
-                        const alertBounds = getAlertBBox(alertFeature);
-                        const alertCenter = {
-                            lng: (alertBounds[0] + alertBounds[2]) / 2,
-                            lat: (alertBounds[1] + alertBounds[3]) / 2
-                        };
-
-                        const isInViewport = currentBounds.contains([alertCenter.lng, alertCenter.lat]);
-
-                        if (alert.properties.priority === 'HIGH') {
-                            shouldAutoProcess = isInViewport;
-                        } else if (currentZoom <= 7.0 && isInViewport) {
-                            shouldAutoProcess = true;
+    const currentZoom = map.getZoom();
+            const currentBounds = map.getBounds();
+            let newAlerts = [];
+        
+            allAlerts.forEach(alert => {
+                if (!readAlerts.has(alert.properties.id)) {
+                    let shouldAutoProcess = false;
+                
+                    if (alert.geometry && alert.geometry.coordinates) {
+                        try {
+                            const alertFeature = {
+                                type: 'FeatureCollection',
+                                features: [alert]
+                            };
+                            const alertBounds = getAlertBBox(alertFeature);
+                            const alertCenter = {
+                                lng: (alertBounds[0] + alertBounds[2]) / 2,
+                                lat: (alertBounds[1] + alertBounds[3]) / 2
+                            };
+                        
+                            const isInViewport = currentBounds.contains([alertCenter.lng, alertCenter.lat]);
+                        
+                            if (alert.properties.priority === 'HIGH') {
+                                shouldAutoProcess = isInViewport;
+                            } else if (currentZoom <= 7.0 && isInViewport) {
+                                shouldAutoProcess = true;
+                            }
+                        } catch (error) {
+                            console.warn("Error checking alert viewport:", error);
                         }
-                    } catch (error) {
-                        console.warn("Error checking alert viewport:", error);
                     }
+                
+                    if (shouldAutoProcess) {
+                        newAlerts.push(alert);
+                    }
+                
+                    readAlerts.add(alert.properties.id);
                 }
-
-                if (shouldAutoProcess) {
-                    newAlerts.push(alert);
-                }
-
-                readAlerts.add(alert.properties.id);
+            });
+        
+            if (newAlerts.length > 0) {
+                console.log(`Processing ${newAlerts.length} viewport-visible alerts`);
+                handleNewAlerts(newAlerts);
+            } else {
+                console.log("No new alerts in current viewport to process");
             }
-        });
-
-        if (newAlerts.length > 0) {
-            console.log(`Processing ${newAlerts.length} viewport-visible alerts`);
-            handleNewAlerts(newAlerts);
-        } else {
-            console.log("No new alerts in current viewport to process");
-        }
-
-        console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
+        
+            console.log(`[DEBUG] Total alerts before filtering: ${allAlerts.length}`);
+        
     }
-
 const mappableAlerts = allAlerts.filter(a => a.geometry && a.geometry.coordinates && a.geometry.coordinates.length > 0);
         console.log(`[DEBUG] Mappable alerts after filtering: ${mappableAlerts.length}`);
         console.log(`[DEBUG] Alerts filtered out: ${allAlerts.length - mappableAlerts.length}`);
