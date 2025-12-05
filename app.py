@@ -412,16 +412,16 @@ def start_verification_loop():
                 verify_forecasts()
                 check_count += 1
                 
-                # Run retraining every 24 checks (12 hours if checking every 30 min)
-                if check_count % 24 == 0 and auto_retrain is not None:
+                # Run retraining every 360 checks (12 hours if checking every 2 min)
+                if check_count % 360 == 0 and auto_retrain is not None:
                     print("\n🤖 Automatic retraining check...")
                     auto_retrain()
                 
             except Exception as e:
                 print(f"⚠ Error in verification loop: {e}")
             
-            # Check every 30 minutes
-            time.sleep(1800)
+            # Check every 2 minutes for severe weather
+            time.sleep(120)
     
     thread = threading.Thread(target=verification_worker)
     thread.daemon = True
