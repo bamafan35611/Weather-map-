@@ -5,6 +5,7 @@ Makes your bot talkative by generating interesting weather narration
 
 from typing import Dict, List, Optional
 from datetime import datetime
+import pytz
 import random
 
 class WeatherCommentary:
@@ -422,7 +423,9 @@ def get_national_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
 def get_hourly_update(alerts: List[Dict], scored_alerts: List[Dict], local_area: str = "North Alabama") -> str:
     """Get hourly weather update"""
     commentary = WeatherCommentary()
-    hour = datetime.now().hour
+    # Use Central Time (Alabama time zone)
+    central = pytz.timezone('America/Chicago')
+    hour = datetime.now(central).hour
     return commentary.generate_hourly_update(alerts, scored_alerts, hour, local_area)
 
 
