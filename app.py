@@ -8,13 +8,14 @@ from ml_bridge import get_ml_predictions  # Fetch ML from local PC
 
 # Import local prediction capability
 try:
-    from local_predictor import generate_local_predictions
+    from local_predictor import generate_local_predictions, LocalPredictor
     LOCAL_PREDICTOR_AVAILABLE = True
     print("✓ Local predictor loaded")
 except ImportError as e:
     print(f"⚠ Local predictor not available: {e}")
     LOCAL_PREDICTOR_AVAILABLE = False
     generate_local_predictions = None
+    LocalPredictor = None
 
 # Import forecast tracking system
 try:
@@ -28,6 +29,33 @@ try:
     from auto_retrain import auto_retrain
     FORECAST_SYSTEM_AVAILABLE = True
     print("✓ Forecast tracking system loaded")
+except ImportError as e:
+    print(f"⚠ Forecast system not available: {e}")
+    FORECAST_SYSTEM_AVAILABLE = False
+    save_forecast = None
+    get_forecast_history = None
+    get_accuracy_stats = None
+    verify_forecasts = None
+    auto_retrain = None
+
+# Import new features: Pre-Alert Predictor and Severity Scorer
+try:
+    from pre_alert_predictor import PreAlertPredictor, get_pre_alert_predictions, verify_pre_alerts
+    PRE_ALERT_AVAILABLE = True
+    print("✓ Pre-alert prediction system loaded")
+except ImportError as e:
+    print(f"⚠ Pre-alert system not available: {e}")
+    PRE_ALERT_AVAILABLE = False
+    PreAlertPredictor = None
+
+try:
+    from severity_scorer import SeverityScorer, score_alert, score_all_alerts, get_threat_announcement
+    SEVERITY_SCORER_AVAILABLE = True
+    print("✓ Severity scoring system loaded")
+except ImportError as e:
+    print(f"⚠ Severity scorer not available: {e}")
+    SEVERITY_SCORER_AVAILABLE = False
+    SeverityScorer = None
 except ImportError as e:
     print(f"⚠ Forecast system not available: {e}")
     FORECAST_SYSTEM_AVAILABLE = False
@@ -372,6 +400,143 @@ def api_ml_status():
     })
 
 # ----------------------------------------------------------------------
+# Pre-Alert Prediction System Endpoints
+# ----------------------------------------------------------------------
+@app.get('/api/pre-alerts')
+def api_pre_alerts():
+    """Get current pre-alert predictions"""
+    if not PRE_ALERT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Pre-alert system not available'}), 503
+    
+    try:
+        predictions = get_pre_alert_predictions()
+        return jsonify({
+            'success': True,
+            'count': len(predictions),
+            'predictions': predictions,
+            'message': f'NorthBamaWX monitoring {len(predictions)} developing situations'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/pre-alerts/stats')
+def api_pre_alert_stats():
+    """Get pre-alert verification statistics"""
+    if not PRE_ALERT_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Pre-alert verification not available'}), 503
+    
+    try:
+        # Get current alerts for verification
+        predictor = LocalPredictor()
+        current_alerts = predictor.fetch_active_alerts()
+        
+        # Verify predictions
+        stats = verify_pre_alerts(current_alerts)
+        
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'message': f'Pre-alert accuracy: {stats.get("accuracy", 0):.1f}%'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ----------------------------------------------------------------------
+# Severity Scoring System Endpoints
+# ----------------------------------------------------------------------
+@app.get('/api/alerts/scored')
+def api_scored_alerts():
+    """Get all alerts with threat scores"""
+    if not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Severity scoring not available'}), 503
+    
+    try:
+        # Fetch active alerts
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        
+        # Score all alerts
+        scored = score_all_alerts(alerts)
+        
+        # Get highest threat
+        highest = scored[0] if scored else None
+        highest_score = highest['threat_score']['score'] if highest else 0
+        
+        return jsonify({
+            'success': True,
+            'count': len(scored),
+            'alerts': scored,
+            'highest_threat': highest_score,
+            'highest_alert': highest,
+            'message': f'{len(scored)} alerts, highest threat: {highest_score}/100'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/alerts/<alert_id>/score')
+def api_alert_score(alert_id):
+    """Get threat score for specific alert"""
+    if not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Severity scoring not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        
+        # Find the alert
+        alert = next((a for a in alerts if a.get('id') == alert_id), None)
+        if not alert:
+            return jsonify({'success': False, 'error': 'Alert not found'}), 404
+        
+        score_data = score_alert(alert)
+        announcement = get_threat_announcement(alert)
+        
+        return jsonify({
+            'success': True,
+            'alert': alert,
+            'score': score_data,
+            'announcement': announcement
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/threat/current')
+def api_current_threat():
+    """Get current highest threat level"""
+    if not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Threat scoring not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        
+        if not alerts:
+            return jsonify({
+                'success': True,
+                'threat_score': 0,
+                'threat_level': 'NO THREATS',
+                'color': '#00FF00',
+                'action': 'System monitoring - no threats detected',
+                'active_alerts': 0
+            })
+        
+        scored = score_all_alerts(alerts)
+        highest = scored[0]
+        
+        return jsonify({
+            'success': True,
+            'threat_score': highest['threat_score']['score'],
+            'threat_level': highest['threat_score']['threat_level'],
+            'color': highest['threat_score']['color'],
+            'action': highest['threat_score']['action'],
+            'alert_type': highest.get('event'),
+            'location': highest.get('areaDesc'),
+            'active_alerts': len(alerts)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ----------------------------------------------------------------------
 # Catch-all so OBS and browser routing never 404
 # ----------------------------------------------------------------------
 @app.route('/<path:path>')
@@ -394,6 +559,15 @@ def start_verification_loop():
         print("🔍 Starting background verification and retraining loop...")
         time.sleep(60)  # Wait 1 minute before first check
         
+        # Initialize pre-alert predictor if available
+        pre_alert_predictor = None
+        if PRE_ALERT_AVAILABLE:
+            try:
+                pre_alert_predictor = PreAlertPredictor()
+                print("✓ Pre-alert predictor initialized in background loop")
+            except Exception as e:
+                print(f"⚠ Could not initialize pre-alert predictor: {e}")
+        
         check_count = 0
         while True:
             try:
@@ -407,6 +581,31 @@ def start_verification_loop():
                             print(f"✓ Generated and saved {len(predictions)} local predictions")
                     except Exception as e:
                         print(f"⚠ Error generating local predictions: {e}")
+                
+                # Check for pre-alerts every cycle (every 2 minutes)
+                if pre_alert_predictor and LOCAL_PREDICTOR_AVAILABLE:
+                    try:
+                        pre_alerts = pre_alert_predictor.scan_for_developing_weather()
+                        if pre_alerts:
+                            print(f"🚨 PRE-ALERT: {len(pre_alerts)} developing situations detected")
+                            for pre_alert in pre_alerts:
+                                print(f"  - {pre_alert['alert_type']} for {pre_alert['location']} "
+                                      f"({pre_alert['confidence']}% confidence)")
+                    except Exception as e:
+                        print(f"⚠ Error checking pre-alerts: {e}")
+                
+                # Verify pre-alerts against actual alerts every 5 cycles (10 minutes)
+                if pre_alert_predictor and check_count % 5 == 0 and LOCAL_PREDICTOR_AVAILABLE:
+                    try:
+                        predictor = LocalPredictor()
+                        current_alerts = predictor.fetch_active_alerts()
+                        stats = pre_alert_predictor.verify_predictions(current_alerts)
+                        if stats.get('correct', 0) > 0 or stats.get('false_alarms', 0) > 0:
+                            print(f"✅ Pre-alert verification: {stats['correct']} correct, "
+                                  f"{stats['false_alarms']} false alarms, "
+                                  f"avg {stats.get('avg_time_advantage', 0):.1f} min lead time")
+                    except Exception as e:
+                        print(f"⚠ Error verifying pre-alerts: {e}")
                 
                 # Run verification every cycle
                 verify_forecasts()
