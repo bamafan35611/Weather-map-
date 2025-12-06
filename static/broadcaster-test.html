@@ -159,7 +159,7 @@
 
     <script src="northbamawx-broadcaster.js"></script>
     <script>
-        let broadcaster = null;
+        let weatherBroadcaster = null;
         let countdownInterval = null;
         
         // Custom broadcaster with logging
@@ -210,18 +210,18 @@
         }
         
         function startBroadcaster() {
-            if (broadcaster) {
+            if (weatherBroadcaster) {
                 addLog('⚠️ Already running');
                 return;
             }
             
-            broadcaster = new LoggingBroadcaster({
+            weatherBroadcaster = new LoggingBroadcaster({
                 baseUrl: 'https://weather-map-zfln.onrender.com',
                 localArea: 'North Alabama',
                 debug: true
             });
             
-            broadcaster.start();
+            weatherBroadcaster.start();
             document.getElementById('status').textContent = '🟢 Running';
             addLog('✅ Broadcaster started!');
             
@@ -229,9 +229,9 @@
         }
         
         function stopBroadcaster() {
-            if (broadcaster) {
-                broadcaster.stop();
-                broadcaster = null;
+            if (weatherBroadcaster) {
+                weatherBroadcaster.stop();
+                weatherBroadcaster = null;
                 document.getElementById('status').textContent = '🔴 Stopped';
                 addLog('🛑 Broadcaster stopped');
                 
@@ -244,8 +244,8 @@
         }
         
         async function testBroadcast() {
-            if (!broadcaster) {
-                broadcaster = new LoggingBroadcaster({
+            if (!weatherBroadcaster) {
+                weatherBroadcaster = new LoggingBroadcaster({
                     baseUrl: 'https://weather-map-zfln.onrender.com',
                     localArea: 'North Alabama',
                     debug: true
@@ -253,7 +253,7 @@
             }
             
             addLog('🧪 Testing broadcast...');
-            await broadcaster.broadcastNow();
+            await weatherBroadcaster.broadcastNow();
         }
         
         function addLog(message, type = '') {
