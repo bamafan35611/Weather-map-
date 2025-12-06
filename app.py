@@ -76,6 +76,16 @@ except ImportError as e:
     print(f"⚠ Social media poster not available: {e}")
     SOCIAL_MEDIA_AVAILABLE = False
     SocialMediaPoster = None
+
+# Import weather commentary system
+try:
+    from weather_commentary import WeatherCommentary, get_national_briefing, get_hourly_update, get_weather_story
+    COMMENTARY_AVAILABLE = True
+    print("✓ Weather commentary system loaded")
+except ImportError as e:
+    print(f"⚠ Weather commentary not available: {e}")
+    COMMENTARY_AVAILABLE = False
+    WeatherCommentary = None
 except ImportError as e:
     print(f"⚠ Forecast system not available: {e}")
     FORECAST_SYSTEM_AVAILABLE = False
@@ -698,6 +708,79 @@ def api_voice_custom():
             'ssml': ssml,
             'voice_style': style,
             'threat_score': threat_score
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ----------------------------------------------------------------------
+# Weather Commentary Endpoints
+# ----------------------------------------------------------------------
+@app.get('/api/commentary/national')
+def api_commentary_national():
+    """Get national weather briefing with commentary"""
+    if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Commentary system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        scored = score_all_alerts(alerts) if alerts else []
+        
+        briefing = get_national_briefing(alerts, scored)
+        
+        return jsonify({
+            'success': True,
+            'commentary': briefing,
+            'alert_count': len(alerts),
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/commentary/hourly')
+def api_commentary_hourly():
+    """Get hourly weather update"""
+    if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Commentary system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        scored = score_all_alerts(alerts) if alerts else []
+        
+        # Get local area from query params (default: North Alabama)
+        local_area = request.args.get('local_area', 'North Alabama')
+        
+        update = get_hourly_update(alerts, scored, local_area)
+        
+        return jsonify({
+            'success': True,
+            'commentary': update,
+            'local_area': local_area,
+            'alert_count': len(alerts),
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/commentary/story')
+def api_commentary_story():
+    """Get weather story/narrative"""
+    if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Commentary system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        scored = score_all_alerts(alerts) if alerts else []
+        
+        story = get_weather_story(alerts, scored)
+        
+        return jsonify({
+            'success': True,
+            'commentary': story,
+            'alert_count': len(alerts),
+            'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
