@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NorthBamaWX Auto-Broadcaster</title>
+    <style>
+        body {
+            background-color: transparent;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+        #status {
+            color: #00ff00;
+            font-size: 12px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">🎙️ Initializing...</div>
+    
+    <script src="https://weather-map-zfln.onrender.com/static/northbamawx-broadcaster.js"></script>
+    <script>
+        // Custom broadcaster with browser TTS
+        class OBSBroadcaster extends NorthBamaWXBroadcaster {
+            async speak(text, voiceStyle) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = `🗣️ Speaking: ${voiceStyle.toUpperCase()}`;
+                
+                console.log(`🗣️ [${voiceStyle.toUpperCase()}] ${text}`);
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                // Adjust voice based on style
+                switch(voiceStyle) {
+                    case 'emergency':
+                        utterance.rate = 1.3;
+                        utterance.pitch = 1.2;
+                        utterance.volume = 1.0;
+                        break;
+                    case 'urgent':
+                        utterance.rate = 1.15;
+                        utterance.pitch = 1.1;
+                        utterance.volume = 0.9;
+                        break;
+                    case 'concerned':
+                        utterance.rate = 1.05;
+                        utterance.pitch = 1.05;
+                        utterance.volume = 0.8;
+                        break;
+                    default: // calm
+                        utterance.rate = 1.0;
+                        utterance.pitch = 1.0;
+                        utterance.volume = 0.8;
+                }
+                
+                speechSynthesis.speak(utterance);
+                
+                // Wait for speech to finish
+                await new Promise(resolve => {
+                    utterance.onend = () => {
+                        statusDiv.textContent = '✅ Ready';
+                        resolve();
+                    };
+                    utterance.onerror = () => {
+                        statusDiv.textContent = '⚠️ Error';
+                        resolve();
+                    };
+                });
+            }
+        }
+        
+        // Create and auto-start broadcaster
+        const broadcaster = new OBSBroadcaster({
+            baseUrl: 'https://weather-map-zfln.onrender.com',
+            localArea: 'North Alabama',
+            debug: true
+        });
+        
+        // Start automatically when page loads
+        broadcaster.start();
+        
+        document.getElementById('status').textContent = '✅ Broadcasting every 15 minutes';
+        
+        console.log('🎙️ NorthBamaWX Auto-Broadcaster Started!');
+        console.log('📡 Broadcasting at :00, :15, :30, :45');
+        
+        // Show countdown in status
+        setInterval(() => {
+            const now = new Date();
+            const minute = now.getMinutes();
+            const nextMinute = Math.ceil(minute / 15) * 15;
+            const minutesUntil = (nextMinute - minute + 60) % 60;
+            const secondsUntil = 60 - now.getSeconds();
+            
+            const totalSeconds = minutesUntil * 60 + secondsUntil - 60;
+            const displayMinutes = Math.floor(totalSeconds / 60);
+            const displaySeconds = totalSeconds % 60;
+            
+            if (totalSeconds > 0) {
+                document.getElementById('status').textContent = 
+                    `✅ Next broadcast in ${displayMinutes}:${displaySeconds.toString().padStart(2, '0')}`;
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
