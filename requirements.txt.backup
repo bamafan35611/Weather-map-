@@ -7,5 +7,3 @@ scikit-learn
 gunicorn
 gevent
 psycopg2-binary
-pytz
-websockets
