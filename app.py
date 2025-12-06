@@ -56,6 +56,26 @@ except ImportError as e:
     print(f"⚠ Severity scorer not available: {e}")
     SEVERITY_SCORER_AVAILABLE = False
     SeverityScorer = None
+
+# Import voice styles system
+try:
+    from voice_styles import VoiceStyleManager, get_announcement_for_alert, get_announcement_for_pre_alert, get_ssml_for_text
+    VOICE_STYLES_AVAILABLE = True
+    print("✓ Voice styles system loaded")
+except ImportError as e:
+    print(f"⚠ Voice styles not available: {e}")
+    VOICE_STYLES_AVAILABLE = False
+    VoiceStyleManager = None
+
+# Import social media poster
+try:
+    from social_media_poster import SocialMediaPoster, post_alert_to_social_media, post_pre_alert_to_social_media, post_stats_to_social_media
+    SOCIAL_MEDIA_AVAILABLE = True
+    print("✓ Social media poster loaded")
+except ImportError as e:
+    print(f"⚠ Social media poster not available: {e}")
+    SOCIAL_MEDIA_AVAILABLE = False
+    SocialMediaPoster = None
 except ImportError as e:
     print(f"⚠ Forecast system not available: {e}")
     FORECAST_SYSTEM_AVAILABLE = False
@@ -537,6 +557,152 @@ def api_current_threat():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ----------------------------------------------------------------------
+# Voice Styles System Endpoints
+# ----------------------------------------------------------------------
+@app.get('/api/voice/announcement/<alert_id>')
+def api_voice_announcement(alert_id):
+    """Get voice announcement for specific alert with dynamic styling"""
+    if not VOICE_STYLES_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Voice system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        
+        # Find the alert
+        alert = next((a for a in alerts if a.get('id') == alert_id), None)
+        if not alert:
+            return jsonify({'success': False, 'error': 'Alert not found'}), 404
+        
+        # Get threat score
+        score_data = score_alert(alert)
+        threat_score = score_data['score']
+        
+        # Generate voice announcement
+        announcement = get_announcement_for_alert(alert, threat_score)
+        
+        return jsonify({
+            'success': True,
+            'announcement': announcement,
+            'alert': alert,
+            'threat_score': threat_score
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/voice/announcements/all')
+def api_voice_announcements_all():
+    """Get voice announcements for all active alerts, sorted by threat"""
+    if not VOICE_STYLES_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Voice system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        
+        if not alerts:
+            return jsonify({
+                'success': True,
+                'count': 0,
+                'announcements': [],
+                'message': 'No active alerts'
+            })
+        
+        # Score all alerts
+        scored = score_all_alerts(alerts)
+        
+        # Generate announcements for each
+        announcements = []
+        for alert in scored:
+            threat_score = alert['threat_score']['score']
+            announcement = get_announcement_for_alert(alert, threat_score)
+            announcements.append({
+                'alert_id': alert.get('id'),
+                'event': alert.get('event'),
+                'location': alert.get('areaDesc'),
+                'threat_score': threat_score,
+                'voice_style': announcement['style'],
+                'text': announcement['text'],
+                'ssml': announcement['ssml']
+            })
+        
+        return jsonify({
+            'success': True,
+            'count': len(announcements),
+            'announcements': announcements,
+            'highest_threat': announcements[0] if announcements else None
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/voice/pre-alert-announcements')
+def api_voice_pre_alert_announcements():
+    """Get voice announcements for pre-alerts"""
+    if not VOICE_STYLES_AVAILABLE or not PRE_ALERT_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Voice system not available'}), 503
+    
+    try:
+        pre_alerts = get_pre_alert_predictions()
+        
+        if not pre_alerts:
+            return jsonify({
+                'success': True,
+                'count': 0,
+                'announcements': [],
+                'message': 'No pre-alerts active'
+            })
+        
+        # Generate announcements for each pre-alert
+        announcements = []
+        for pre_alert in pre_alerts:
+            announcement = get_announcement_for_pre_alert(pre_alert)
+            announcements.append({
+                'alert_type': pre_alert.get('alert_type'),
+                'location': pre_alert.get('location'),
+                'confidence': pre_alert.get('confidence'),
+                'voice_style': announcement['style'],
+                'text': announcement['text'],
+                'ssml': announcement['ssml']
+            })
+        
+        return jsonify({
+            'success': True,
+            'count': len(announcements),
+            'announcements': announcements
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.post('/api/voice/custom')
+def api_voice_custom():
+    """Generate voice SSML for custom text with threat-based styling"""
+    if not VOICE_STYLES_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Voice system not available'}), 503
+    
+    try:
+        data = request.get_json()
+        text = data.get('text')
+        threat_score = data.get('threat_score', 50)
+        
+        if not text:
+            return jsonify({'success': False, 'error': 'Text required'}), 400
+        
+        ssml = get_ssml_for_text(text, threat_score)
+        
+        manager = VoiceStyleManager()
+        style = manager.get_voice_style_for_threat(threat_score)
+        
+        return jsonify({
+            'success': True,
+            'text': text,
+            'ssml': ssml,
+            'voice_style': style,
+            'threat_score': threat_score
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ----------------------------------------------------------------------
 # Catch-all so OBS and browser routing never 404
 # ----------------------------------------------------------------------
 @app.route('/<path:path>')
@@ -591,8 +757,29 @@ def start_verification_loop():
                             for pre_alert in pre_alerts:
                                 print(f"  - {pre_alert['alert_type']} for {pre_alert['location']} "
                                       f"({pre_alert['confidence']}% confidence)")
+                                
+                                # Post pre-alert to social media
+                                if SOCIAL_MEDIA_AVAILABLE:
+                                    try:
+                                        post_pre_alert_to_social_media(pre_alert)
+                                    except Exception as e:
+                                        print(f"⚠ Error posting pre-alert: {e}")
                     except Exception as e:
                         print(f"⚠ Error checking pre-alerts: {e}")
+                
+                # Check for new alerts and post high-priority ones
+                if SOCIAL_MEDIA_AVAILABLE and SEVERITY_SCORER_AVAILABLE and LOCAL_PREDICTOR_AVAILABLE:
+                    try:
+                        predictor = LocalPredictor()
+                        alerts = predictor.fetch_active_alerts()
+                        if alerts:
+                            scored = score_all_alerts(alerts)
+                            for alert in scored[:5]:  # Top 5 threats only
+                                threat_score = alert['threat_score']['score']
+                                if threat_score >= 50:  # Only post elevated+ threats
+                                    post_alert_to_social_media(alert, threat_score)
+                    except Exception as e:
+                        print(f"⚠ Error posting alerts: {e}")
                 
                 # Verify pre-alerts against actual alerts every 5 cycles (10 minutes)
                 if pre_alert_predictor and check_count % 5 == 0 and LOCAL_PREDICTOR_AVAILABLE:
@@ -604,8 +791,37 @@ def start_verification_loop():
                             print(f"✅ Pre-alert verification: {stats['correct']} correct, "
                                   f"{stats['false_alarms']} false alarms, "
                                   f"avg {stats.get('avg_time_advantage', 0):.1f} min lead time")
+                            
+                            # Post verification success if we got predictions right
+                            if SOCIAL_MEDIA_AVAILABLE and stats.get('correct', 0) > 0:
+                                try:
+                                    from social_media_poster import post_stats_to_social_media
+                                    poster = SocialMediaPoster()
+                                    poster.post_verification(stats)
+                                except Exception as e:
+                                    print(f"⚠ Error posting verification: {e}")
                     except Exception as e:
                         print(f"⚠ Error verifying pre-alerts: {e}")
+                
+                # Post daily stats once per day (check every 12 hours)
+                if SOCIAL_MEDIA_AVAILABLE and check_count % 360 == 0:
+                    try:
+                        # Gather stats
+                        accuracy_stats = get_accuracy_stats() if FORECAST_SYSTEM_AVAILABLE else {}
+                        predictor = LocalPredictor() if LOCAL_PREDICTOR_AVAILABLE else None
+                        alerts = predictor.fetch_active_alerts() if predictor else []
+                        
+                        daily_stats = {
+                            'alerts_monitored': len(alerts),
+                            'pre_alerts_issued': len(pre_alert_predictor.predictions) if pre_alert_predictor else 0,
+                            'accuracy': accuracy_stats.get('accuracy_pct', 0),
+                            'avg_lead_time': 0,  # Would calculate from pre-alert data
+                            'highest_threat': max([a.get('threat_score', {}).get('score', 0) for a in score_all_alerts(alerts)]) if alerts and SEVERITY_SCORER_AVAILABLE else 0
+                        }
+                        
+                        post_stats_to_social_media(daily_stats)
+                    except Exception as e:
+                        print(f"⚠ Error posting daily stats: {e}")
                 
                 # Run verification every cycle
                 verify_forecasts()
