@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NorthBamaWX Broadcaster Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            opacity: 0.8;
+            margin-bottom: 30px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #da190b;
+        }
+        .btn-test {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-test:hover {
+            background: #0b7dda;
+        }
+        .status {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+        }
+        .log {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #4CAF50;
+            padding-left: 10px;
+        }
+        .log-entry.speaking {
+            border-left-color: #2196F3;
+        }
+        .log-entry.error {
+            border-left-color: #f44336;
+        }
+        .next-broadcast {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .timer {
+            font-size: 32px;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ NorthBamaWX Broadcaster</h1>
+        <p class="subtitle">Automated Weather Broadcasting Every 15 Minutes</p>
+        
+        <div class="controls">
+            <button class="btn-primary" onclick="startBroadcaster()">▶️ Start Scheduler</button>
+            <button class="btn-danger" onclick="stopBroadcaster()">⏹️ Stop Scheduler</button>
+            <button class="btn-test" onclick="testBroadcast()">🧪 Test Now</button>
+            <button class="btn-test" onclick="clearLog()">🗑️ Clear Log</button>
+        </div>
+        
+        <div class="status">
+            <div class="status-item">
+                <span>📡 Status:</span>
+                <span id="status">Stopped</span>
+            </div>
+            <div class="status-item">
+                <span>⏰ Current Time:</span>
+                <span id="current-time">--:--:--</span>
+            </div>
+            <div class="status-item">
+                <span>📊 Alert Count:</span>
+                <span id="alert-count">--</span>
+            </div>
+            <div class="status-item">
+                <span>🎙️ Last Broadcast:</span>
+                <span id="last-broadcast">Never</span>
+            </div>
+        </div>
+        
+        <div class="next-broadcast">
+            Next Broadcast In: <span class="timer" id="countdown">--:--</span>
+        </div>
+        
+        <div class="log" id="log">
+            <div class="log-entry">Waiting to start...</div>
+        </div>
+    </div>
+
+    <script src="northbamawx-broadcaster.js"></script>
+    <script>
+        let broadcaster = null;
+        let countdownInterval = null;
+        
+        // Custom broadcaster with logging
+        class LoggingBroadcaster extends NorthBamaWXBroadcaster {
+            async speak(text, voiceStyle) {
+                // Log to screen
+                addLog(`🗣️ [${voiceStyle.toUpperCase()}] ${text}`, 'speaking');
+                
+                // Use browser TTS
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                // Adjust voice based on style
+                switch(voiceStyle) {
+                    case 'emergency':
+                        utterance.rate = 1.3;
+                        utterance.pitch = 1.2;
+                        utterance.volume = 1.0;
+                        break;
+                    case 'urgent':
+                        utterance.rate = 1.15;
+                        utterance.pitch = 1.1;
+                        utterance.volume = 0.9;
+                        break;
+                    case 'concerned':
+                        utterance.rate = 1.05;
+                        utterance.pitch = 1.05;
+                        utterance.volume = 0.8;
+                        break;
+                    default: // calm
+                        utterance.rate = 1.0;
+                        utterance.pitch = 1.0;
+                        utterance.volume = 0.8;
+                }
+                
+                speechSynthesis.speak(utterance);
+                
+                // Wait for speech to finish
+                await new Promise(resolve => {
+                    utterance.onend = resolve;
+                    utterance.onerror = resolve;
+                });
+            }
+            
+            log(message) {
+                super.log(message);
+                addLog(message);
+            }
+        }
+        
+        function startBroadcaster() {
+            if (broadcaster) {
+                addLog('⚠️ Already running');
+                return;
+            }
+            
+            broadcaster = new LoggingBroadcaster({
+                baseUrl: 'https://weather-map-zfln.onrender.com',
+                localArea: 'North Alabama',
+                debug: true
+            });
+            
+            broadcaster.start();
+            document.getElementById('status').textContent = '🟢 Running';
+            addLog('✅ Broadcaster started!');
+            
+            startCountdown();
+        }
+        
+        function stopBroadcaster() {
+            if (broadcaster) {
+                broadcaster.stop();
+                broadcaster = null;
+                document.getElementById('status').textContent = '🔴 Stopped';
+                addLog('🛑 Broadcaster stopped');
+                
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+                document.getElementById('countdown').textContent = '--:--';
+            }
+        }
+        
+        async function testBroadcast() {
+            if (!broadcaster) {
+                broadcaster = new LoggingBroadcaster({
+                    baseUrl: 'https://weather-map-zfln.onrender.com',
+                    localArea: 'North Alabama',
+                    debug: true
+                });
+            }
+            
+            addLog('🧪 Testing broadcast...');
+            await broadcaster.broadcastNow();
+        }
+        
+        function addLog(message, type = '') {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+            
+            // Update last broadcast if it's a broadcast message
+            if (message.includes('Broadcasting:')) {
+                document.getElementById('last-broadcast').textContent = new Date().toLocaleTimeString();
+            }
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '<div class="log-entry">Log cleared</div>';
+        }
+        
+        function startCountdown() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            
+            updateCountdown();
+            countdownInterval = setInterval(updateCountdown, 1000);
+        }
+        
+        function updateCountdown() {
+            const now = new Date();
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+            
+            // Calculate next broadcast time (next :00, :15, :30, or :45)
+            const nextMinute = Math.ceil(minutes / 15) * 15;
+            const minutesUntil = (nextMinute - minutes + 60) % 60;
+            const secondsUntil = minutesUntil === 0 ? (60 - seconds) : (60 - seconds);
+            
+            const totalSecondsUntil = minutesUntil * 60 + secondsUntil - 60;
+            
+            const displayMinutes = Math.floor(totalSecondsUntil / 60);
+            const displaySeconds = totalSecondsUntil % 60;
+            
+            document.getElementById('countdown').textContent = 
+                `${displayMinutes.toString().padStart(2, '0')}:${displaySeconds.toString().padStart(2, '0')}`;
+        }
+        
+        // Update time display
+        setInterval(() => {
+            document.getElementById('current-time').textContent = new Date().toLocaleTimeString();
+        }, 1000);
+        
+        // Fetch alert count periodically
+        async function updateAlertCount() {
+            try {
+                const response = await fetch('https://weather-map-zfln.onrender.com/api/commentary/national');
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('alert-count').textContent = data.alert_count;
+                }
+            } catch (error) {
+                console.error('Failed to fetch alert count:', error);
+            }
+        }
+        
+        updateAlertCount();
+        setInterval(updateAlertCount, 120000); // Every 2 minutes
+    </script>
+</body>
+</html>

@@ -786,6 +786,123 @@ def api_commentary_story():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.get('/api/broadcast/scheduled')
+def api_broadcast_scheduled():
+    """Get the appropriate broadcast content based on current time (15-min schedule)"""
+    if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Broadcast system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        scored = score_all_alerts(alerts) if alerts else []
+        
+        # Get current minute
+        current_minute = datetime.now().minute
+        local_area = request.args.get('local_area', 'North Alabama')
+        
+        broadcast_data = {
+            'success': True,
+            'timestamp': datetime.now().isoformat(),
+            'alert_count': len(alerts),
+            'current_minute': current_minute,
+            'broadcast_type': None,
+            'content': []
+        }
+        
+        # :00 - National Briefing
+        if current_minute == 0:
+            briefing = get_national_briefing(alerts, scored)
+            broadcast_data['broadcast_type'] = 'national_briefing'
+            broadcast_data['content'].append({
+                'type': 'commentary',
+                'text': briefing,
+                'duration_estimate': '60 seconds'
+            })
+        
+        # :15 - Top Alerts with Voice Styles
+        elif current_minute == 15:
+            broadcast_data['broadcast_type'] = 'top_alerts'
+            
+            if len(scored) > 0:
+                broadcast_data['content'].append({
+                    'type': 'intro',
+                    'text': 'NorthBamaWX with current weather alerts.',
+                    'voice_style': 'calm'
+                })
+                
+                # Top 3 alerts with voice styling
+                for i, alert in enumerate(scored[:3]):
+                    threat_score = alert.get('threat_score', {}).get('score', 0)
+                    announcement = get_announcement_for_alert(alert, threat_score) if VOICE_STYLES_AVAILABLE else None
+                    
+                    if announcement:
+                        broadcast_data['content'].append({
+                            'type': 'alert',
+                            'text': announcement['text'],
+                            'voice_style': announcement['style'],
+                            'threat_score': threat_score,
+                            'alert_info': {
+                                'event': alert.get('event'),
+                                'location': alert.get('areaDesc')
+                            }
+                        })
+                
+                # Check for pre-alerts
+                if PRE_ALERT_AVAILABLE:
+                    pre_alerts = get_pre_alert_predictions()
+                    if pre_alerts:
+                        broadcast_data['content'].append({
+                            'type': 'intro',
+                            'text': 'And now, AI predictions from NorthBamaWX.',
+                            'voice_style': 'concerned'
+                        })
+                        for pre_alert in pre_alerts:
+                            announcement = get_announcement_for_pre_alert(pre_alert) if VOICE_STYLES_AVAILABLE else None
+                            if announcement:
+                                broadcast_data['content'].append({
+                                    'type': 'pre_alert',
+                                    'text': announcement['text'],
+                                    'voice_style': announcement['style']
+                                })
+            else:
+                broadcast_data['content'].append({
+                    'type': 'quiet',
+                    'text': 'NorthBamaWX. All clear at this time.',
+                    'voice_style': 'calm'
+                })
+        
+        # :30 - Hourly Update
+        elif current_minute == 30:
+            update = get_hourly_update(alerts, scored, local_area)
+            broadcast_data['broadcast_type'] = 'hourly_update'
+            broadcast_data['local_area'] = local_area
+            broadcast_data['content'].append({
+                'type': 'commentary',
+                'text': update,
+                'duration_estimate': '15-30 seconds'
+            })
+        
+        # :45 - Weather Story
+        elif current_minute == 45:
+            story = get_weather_story(alerts, scored)
+            broadcast_data['broadcast_type'] = 'weather_story'
+            broadcast_data['content'].append({
+                'type': 'commentary',
+                'text': story,
+                'duration_estimate': '30-60 seconds'
+            })
+        
+        # Not a scheduled time
+        else:
+            broadcast_data['broadcast_type'] = 'none'
+            broadcast_data['message'] = f'No scheduled broadcast at :{current_minute:02d}. Next broadcast at :{(current_minute // 15 + 1) * 15 % 60:02d}'
+        
+        return jsonify(broadcast_data)
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 # ----------------------------------------------------------------------
 # Catch-all so OBS and browser routing never 404
 # ----------------------------------------------------------------------
