@@ -1555,6 +1555,13 @@ mapboxgl.accessToken = __mb_token;
         // Schedule :30 North Alabama local weather updates
         scheduleLocalNorthAlabamaUpdates();
         
+        // Connect to voice relay for map zoom commands
+        setTimeout(() => {
+            if (typeof connectMapToRelay === 'function') {
+                connectMapToRelay();
+            }
+        }, 2000);
+        
         console.log("Enhanced weather system ready!");
     });
     
@@ -3806,20 +3813,7 @@ function connectMapToRelay() {
     }
 }
 
-// Connect to relay after map is fully loaded
-if (map) {
-    // If map is already loaded
-    if (map.loaded()) {
-        console.log('[Map Zoom] 🗺️ Map already loaded, connecting to relay...');
-        setTimeout(connectMapToRelay, 1000);
-    } else {
-        // Wait for map to load
-        map.on('load', () => {
-            console.log('[Map Zoom] 🗺️ Map loaded, connecting to relay...');
-            setTimeout(connectMapToRelay, 1000);
-        });
-    }
-}
+// Map zoom control will be initialized from the main map.on('load') callback above
 
 console.log('[Map Zoom] 🎙️ Map zoom control system initialized');
 console.log('[Map Zoom] 📡 Listening for zoom commands from broadcaster');
