@@ -126,6 +126,43 @@ def format_location_with_state(location: str, state: Optional[str]) -> str:
         # Single location - add ", [State]"
         return f"{location}, {state}"
 
+
+def clean_weather_text(text: str) -> str:
+    """
+    Clean up awkward NWS phrasing to make it sound better when spoken
+    
+    Fixes common meteorological jargon that doesn't sound natural in speech
+    """
+    
+    # Fix "packing" phrases (common NWS meteorological jargon)
+    replacements = {
+        'packing flooding': 'producing flooding',
+        'packing floods': 'bringing floods',
+        'packing heavy flooding': 'producing heavy flooding',
+        'packing flash flooding': 'producing flash flooding',
+        'packing rainfall': 'bringing rainfall',
+        'packing rain': 'bringing rain',
+        'packing winds': 'bringing winds',
+        'storm is packing': 'storm is bringing',
+        'system is packing': 'system is bringing',
+        'storms are packing': 'storms are bringing',
+        'systems are packing': 'systems are bringing',
+        
+        # Other awkward phrases
+        'dumping heavy rain': 'bringing heavy rain',
+        'unloading rainfall': 'bringing rainfall',
+    }
+    
+    # Apply replacements (case-insensitive)
+    for bad_phrase, good_phrase in replacements.items():
+        # Replace exact matches
+        text = text.replace(bad_phrase, good_phrase)
+        # Also handle capitalized versions
+        text = text.replace(bad_phrase.title(), good_phrase.title())
+        text = text.replace(bad_phrase.upper(), good_phrase.upper())
+    
+    return text
+
 class VoiceStyleManager:
     """Manages different voice styles based on threat levels"""
     
@@ -290,7 +327,10 @@ class VoiceStyleManager:
             action = "TAKE PROTECTIVE ACTION IMMEDIATELY! "
             details = "This is an extremely dangerous situation! "
         
-        return attention + main + threat + action + details + "This is NorthBamaWX!"
+        announcement = attention + main + threat + action + details + "This is NorthBamaWX!"
+        
+        # 🆕 Clean up awkward phrasing
+        return clean_weather_text(announcement)
     
     def _format_urgent_announcement(self, event: str, location: str, 
                                     threat_score: int, alert: Dict) -> str:
@@ -323,7 +363,10 @@ class VoiceStyleManager:
         else:
             action = "Take protective action now. "
         
-        return opener + main + threat + level + action + "Stay safe."
+        announcement = opener + main + threat + level + action + "Stay safe."
+        
+        # 🆕 Clean up awkward phrasing
+        return clean_weather_text(announcement)
     
     def _format_concerned_announcement(self, event: str, location: str, 
                                        threat_score: int, alert: Dict) -> str:
@@ -340,7 +383,10 @@ class VoiceStyleManager:
             level = "Moderate threat. "
             action = "Monitor weather conditions and stay informed. "
         
-        return opener + main + threat + level + action
+        announcement = opener + main + threat + level + action
+        
+        # 🆕 Clean up awkward phrasing
+        return clean_weather_text(announcement)
     
     def _format_calm_announcement(self, event: str, location: str, 
                                    threat_score: int, alert: Dict) -> str:
@@ -351,7 +397,10 @@ class VoiceStyleManager:
         threat = f"Threat Score: {threat_score} out of 100. Low threat. "
         action = "Stay aware and monitor for updates. "
         
-        return opener + main + threat + action
+        announcement = opener + main + threat + action
+        
+        # 🆕 Clean up awkward phrasing
+        return clean_weather_text(announcement)
     
     def format_pre_alert_announcement(self, pre_alert: Dict) -> Dict:
         """Format pre-alert announcement"""
