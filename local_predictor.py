@@ -11,6 +11,9 @@ import json
 
 MODEL_PATH = 'models/forecast_model.pkl'
 
+# Territory codes to exclude
+EXCLUDED_TERRITORIES = ['PR', 'VI', 'GU', 'AS', 'MP', 'UM']
+
 class LocalPredictor:
     """Generate predictions using the model on Render"""
     
@@ -29,8 +32,33 @@ class LocalPredictor:
             print(f"⚠ Could not load model: {e}")
             return False
     
+    def _extract_state_code(self, props):
+        """Extract state code from alert properties to filter territories"""
+        # Check geocode for state
+        geocode = props.get('geocode', {})
+        if 'UGC' in geocode:
+            ugc_codes = geocode['UGC']
+            if ugc_codes and len(ugc_codes) > 0:
+                # UGC format: SSZnnn (SS = state code)
+                return ugc_codes[0][:2]
+        
+        # Fallback: check areaDesc for territory names
+        area = props.get('areaDesc', '').upper()
+        if 'PUERTO RICO' in area:
+            return 'PR'
+        if 'VIRGIN ISLANDS' in area:
+            return 'VI'
+        if 'GUAM' in area:
+            return 'GU'
+        if 'AMERICAN SAMOA' in area:
+            return 'AS'
+        if 'NORTHERN MARIANA' in area:
+            return 'MP'
+        
+        return None
+    
     def fetch_active_alerts(self):
-        """Fetch current NWS weather alerts"""
+        """Fetch current NWS weather alerts (mainland U.S. only)"""
         try:
             # Try primary API first
             url = 'https://api.weather.gov/alerts/active'
@@ -43,6 +71,11 @@ class LocalPredictor:
             for feature in data.get('features', []):
                 props = feature.get('properties', {})
                 geometry = feature.get('geometry')
+                
+                # Check if alert is from excluded territory
+                state_code = self._extract_state_code(props)
+                if state_code in EXCLUDED_TERRITORIES:
+                    continue  # Skip this alert
                 
                 # Only process severe weather alerts
                 event = (props.get('event') or '').lower()
