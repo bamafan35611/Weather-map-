@@ -107,13 +107,28 @@ def format_location_with_state(location: str, state: Optional[str]) -> str:
     
     Examples:
         "Jefferson County" + "Alabama" -> "Jefferson County, Alabama"
+        "Jefferson County, AL" + "Alabama" -> "Jefferson County, Alabama" (strips AL first)
         "Jefferson County; Shelby County" + "Alabama" -> "Jefferson County and Shelby County in Alabama"
     """
     if not state:
         return location
     
-    # Check if state already in location
-    if state in location or any(abbr for abbr, name in STATE_ABBR_TO_NAME.items() if abbr in location):
+    # 🆕 FIRST: Strip any state abbreviations from the location text
+    # This prevents "Miami, FL" + "Florida" -> "Miami, FL, Florida"
+    for abbr, full_name in STATE_ABBR_TO_NAME.items():
+        if full_name == state:
+            # Remove patterns like ", FL" or " (FL)" or " FL"
+            import re
+            location = re.sub(rf',\s*{abbr}(?:\s|$|;)', '', location)  # ", FL" or ", FL;"
+            location = re.sub(rf'\(\s*{abbr}\s*\)', '', location)       # "(FL)"
+            location = re.sub(rf'\s+{abbr}(?:\s|$|;)', ' ', location)   # " FL " or " FL;"
+    
+    # Clean up any double spaces or trailing commas
+    location = re.sub(r'\s+', ' ', location).strip()
+    location = location.rstrip(',').strip()
+    
+    # Check if full state name already in location
+    if state in location:
         return location
     
     # Handle multiple counties/areas separated by semicolons or "and"
