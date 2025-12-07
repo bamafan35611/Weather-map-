@@ -49,12 +49,13 @@ class VoiceStyleManager:
         }
         
         # Threat score to voice style mapping
+        # MODIFIED: All alerts use calm voice style
         self.threat_mappings = {
-            (95, 100): 'emergency',   # EXTREME
-            (85, 94): 'emergency',    # SEVERE
-            (70, 84): 'urgent',       # HIGH
-            (50, 69): 'concerned',    # ELEVATED
-            (30, 49): 'concerned',    # MODERATE
+            (95, 100): 'calm',   # EXTREME -> calm
+            (85, 94): 'calm',    # SEVERE -> calm
+            (70, 84): 'calm',       # HIGH -> calm
+            (50, 69): 'calm',    # ELEVATED -> calm
+            (30, 49): 'calm',    # MODERATE -> calm
             (0, 29): 'calm'           # LOW
         }
     
@@ -66,23 +67,8 @@ class VoiceStyleManager:
         return 'calm'
     
     def get_voice_style_for_alert_type(self, alert_type: str) -> str:
-        """Get voice style based on alert type"""
-        alert_lower = alert_type.lower()
-        
-        # Emergency alerts
-        if any(keyword in alert_lower for keyword in 
-               ['tornado emergency', 'flash flood emergency', 'extreme', 'pds']):
-            return 'emergency'
-        
-        # Warning alerts
-        if 'warning' in alert_lower:
-            return 'urgent'
-        
-        # Watch alerts
-        if 'watch' in alert_lower:
-            return 'concerned'
-        
-        # Advisory/Statement
+        """Get voice style based on alert type - MODIFIED: Always returns calm"""
+        # All alert types now use calm voice
         return 'calm'
     
     def generate_ssml(self, text: str, threat_score: int = None, 
