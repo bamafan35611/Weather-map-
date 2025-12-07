@@ -2,7 +2,8 @@ import os
 import glob
 import pickle
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
+from collections import defaultdict
 from flask import Flask, send_from_directory, jsonify, request, Response
 from flask_cors import CORS
 from ml_bridge import get_ml_predictions  # Fetch ML from local PC
@@ -91,6 +92,85 @@ except ImportError as e:
     print(f"⚠ Forecast system not available: {e}")
     FORECAST_SYSTEM_AVAILABLE = False
     auto_retrain = None
+
+# ----------------------------------------------------------------------
+# 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
+# ----------------------------------------------------------------------
+class AlertAnnouncementManager:
+    """Prevents alert spam by tracking announcements and applying cooldowns"""
+    
+    def __init__(self):
+        self.announced_alerts = {}  # alert_id: last_announcement_time
+        self.alert_hashes = {}  # alert_id: content_hash (detect updates)
+        
+        # Configuration
+        self.INITIAL_COOLDOWN = 0  # Announce new alerts immediately
+        self.REPEAT_COOLDOWN = 1800  # 30 minutes before re-announcing
+        self.UPDATE_COOLDOWN = 300  # 5 minutes after update announcement
+        
+        print("✓ Alert announcement manager initialized")
+    
+    def should_announce(self, alert):
+        """Determine if an alert should be announced"""
+        alert_id = alert.get('id')
+        if not alert_id:
+            return False
+        
+        current_time = datetime.now()
+        
+        # Check if this is a new alert (never announced)
+        if alert_id not in self.announced_alerts:
+            print(f"✓ New alert detected: {alert.get('event')}")
+            self.announced_alerts[alert_id] = current_time
+            self.alert_hashes[alert_id] = self._hash_alert(alert)
+            return True
+        
+        # Check if alert content changed (update)
+        current_hash = self._hash_alert(alert)
+        if current_hash != self.alert_hashes.get(alert_id):
+            time_since_last = (current_time - self.announced_alerts[alert_id]).total_seconds()
+            if time_since_last >= self.UPDATE_COOLDOWN:
+                print(f"✓ Alert updated: {alert.get('event')}")
+                self.announced_alerts[alert_id] = current_time
+                self.alert_hashes[alert_id] = current_hash
+                return True
+            else:
+                print(f"⏸ Update too recent, skipping: {alert.get('event')}")
+                return False
+        
+        # Check if enough time passed for re-announcement
+        time_since_last = (current_time - self.announced_alerts[alert_id]).total_seconds()
+        if time_since_last >= self.REPEAT_COOLDOWN:
+            print(f"✓ Re-announcing (30+ min passed): {alert.get('event')}")
+            self.announced_alerts[alert_id] = current_time
+            return True
+        
+        # Otherwise skip (too recent)
+        minutes_left = int((self.REPEAT_COOLDOWN - time_since_last) / 60)
+        print(f"⏸ Skipping repeat announcement ({minutes_left} min until next): {alert.get('event')}")
+        return False
+    
+    def _hash_alert(self, alert):
+        """Create hash of alert content to detect changes"""
+        # Combine key fields that would indicate an update
+        content = f"{alert.get('event')}|{alert.get('severity')}|{alert.get('description', '')[:100]}"
+        return hash(content)
+    
+    def cleanup_expired(self, active_alert_ids):
+        """Remove tracking for expired alerts"""
+        current_ids = set(active_alert_ids)
+        expired = [aid for aid in self.announced_alerts.keys() if aid not in current_ids]
+        
+        for alert_id in expired:
+            del self.announced_alerts[alert_id]
+            if alert_id in self.alert_hashes:
+                del self.alert_hashes[alert_id]
+        
+        if expired:
+            print(f"🗑️ Cleaned up {len(expired)} expired alert(s)")
+
+# Global alert manager instance
+alert_manager = AlertAnnouncementManager()
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -797,6 +877,11 @@ def api_broadcast_scheduled():
         alerts = predictor.fetch_active_alerts()
         scored = score_all_alerts(alerts) if alerts else []
         
+        # 🆕 CLEANUP EXPIRED ALERTS FROM TRACKING
+        if alerts:
+            active_ids = [a.get('id') for a in alerts if a.get('id')]
+            alert_manager.cleanup_expired(active_ids)
+        
         # Get current minute
         current_minute = datetime.now().minute
         local_area = request.args.get('local_area', 'North Alabama')
@@ -820,33 +905,49 @@ def api_broadcast_scheduled():
                 'duration_estimate': '60 seconds'
             })
         
-        # :15 - Top Alerts with Voice Styles
+        # :15 - Top Alerts with Voice Styles (🔧 NOW WITH COOLDOWN!)
         elif current_minute == 15:
             broadcast_data['broadcast_type'] = 'top_alerts'
             
             if len(scored) > 0:
-                broadcast_data['content'].append({
-                    'type': 'intro',
-                    'text': 'NorthBamaWX with current weather alerts.',
-                    'voice_style': 'calm'
-                })
+                # 🆕 FILTER ALERTS THROUGH COOLDOWN SYSTEM
+                alerts_to_announce = []
+                for alert in scored[:10]:  # Check top 10
+                    if alert_manager.should_announce(alert):
+                        alerts_to_announce.append(alert)
                 
-                # Top 3 alerts with voice styling
-                for i, alert in enumerate(scored[:3]):
-                    threat_score = alert.get('threat_score', {}).get('score', 0)
-                    announcement = get_announcement_for_alert(alert, threat_score) if VOICE_STYLES_AVAILABLE else None
+                # Announce filtered alerts
+                if alerts_to_announce:
+                    broadcast_data['content'].append({
+                        'type': 'intro',
+                        'text': 'NorthBamaWX with current weather alerts.',
+                        'voice_style': 'calm'
+                    })
                     
-                    if announcement:
-                        broadcast_data['content'].append({
-                            'type': 'alert',
-                            'text': announcement['text'],
-                            'voice_style': announcement['style'],
-                            'threat_score': threat_score,
-                            'alert_info': {
-                                'event': alert.get('event'),
-                                'location': alert.get('areaDesc')
-                            }
-                        })
+                    # Top 3 alerts with voice styling
+                    for i, alert in enumerate(alerts_to_announce[:3]):
+                        threat_score = alert.get('threat_score', {}).get('score', 0)
+                        announcement = get_announcement_for_alert(alert, threat_score) if VOICE_STYLES_AVAILABLE else None
+                        
+                        if announcement:
+                            broadcast_data['content'].append({
+                                'type': 'alert',
+                                'text': announcement['text'],
+                                'voice_style': announcement['style'],
+                                'threat_score': threat_score,
+                                'alert_info': {
+                                    'event': alert.get('event'),
+                                    'location': alert.get('areaDesc')
+                                }
+                            })
+                else:
+                    # All alerts filtered by cooldown
+                    print("⏸ All alerts recently announced - skipping alert broadcast")
+                    broadcast_data['content'].append({
+                        'type': 'status',
+                        'text': 'Weather conditions continue across monitored areas. No new alerts at this time.',
+                        'voice_style': 'calm'
+                    })
                 
                 # Check for pre-alerts
                 if PRE_ALERT_AVAILABLE:
