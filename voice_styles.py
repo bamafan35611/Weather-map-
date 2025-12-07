@@ -5,8 +5,126 @@ Changes voice tone, speed, and style based on threat level
 
 from typing import Dict, Optional
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+# State lookup tables for extracting state names from alerts
+STATE_ABBR_TO_NAME = {
+    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas',
+    'CA': 'California', 'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware',
+    'FL': 'Florida', 'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho',
+    'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa', 'KS': 'Kansas',
+    'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+    'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+    'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada',
+    'NH': 'New Hampshire', 'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York',
+    'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio', 'OK': 'Oklahoma',
+    'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+    'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+    'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia',
+    'WI': 'Wisconsin', 'WY': 'Wyoming', 'DC': 'District of Columbia',
+    'PR': 'Puerto Rico', 'VI': 'Virgin Islands', 'GU': 'Guam', 'AS': 'American Samoa'
+}
+
+FIPS_TO_STATE = {
+    '01': 'Alabama', '02': 'Alaska', '04': 'Arizona', '05': 'Arkansas',
+    '06': 'California', '08': 'Colorado', '09': 'Connecticut', '10': 'Delaware',
+    '12': 'Florida', '13': 'Georgia', '15': 'Hawaii', '16': 'Idaho',
+    '17': 'Illinois', '18': 'Indiana', '19': 'Iowa', '20': 'Kansas',
+    '21': 'Kentucky', '22': 'Louisiana', '23': 'Maine', '24': 'Maryland',
+    '25': 'Massachusetts', '26': 'Michigan', '27': 'Minnesota', '28': 'Mississippi',
+    '29': 'Missouri', '30': 'Montana', '31': 'Nebraska', '32': 'Nevada',
+    '33': 'New Hampshire', '34': 'New Jersey', '35': 'New Mexico', '36': 'New York',
+    '37': 'North Carolina', '38': 'North Dakota', '39': 'Ohio', '40': 'Oklahoma',
+    '41': 'Oregon', '42': 'Pennsylvania', '44': 'Rhode Island', '45': 'South Carolina',
+    '46': 'South Dakota', '47': 'Tennessee', '48': 'Texas', '49': 'Utah',
+    '50': 'Vermont', '51': 'Virginia', '53': 'Washington', '54': 'West Virginia',
+    '55': 'Wisconsin', '56': 'Wyoming'
+}
+
+
+def extract_state_from_alert(alert: Dict) -> Optional[str]:
+    """
+    Extract state name from NWS alert using multiple methods
+    
+    Returns state name (e.g., 'Alabama') or None if not found
+    """
+    
+    # Method 1: Check geocode FIPS codes (most reliable)
+    geocode = alert.get('geocode', {})
+    if isinstance(geocode, dict):
+        fips_codes = geocode.get('FIPS6', [])
+        if fips_codes and len(fips_codes) > 0:
+            # FIPS codes start with 2-digit state code
+            state_fips = str(fips_codes[0])[:2]
+            state = FIPS_TO_STATE.get(state_fips)
+            if state:
+                return state
+    
+    # Method 2: Check UGC codes
+    if isinstance(geocode, dict):
+        ugc_codes = geocode.get('UGC', [])
+        if ugc_codes and len(ugc_codes) > 0:
+            # UGC format: SSZnnn or SScnnn where SS = state abbr
+            ugc = str(ugc_codes[0])
+            if len(ugc) >= 2:
+                state_abbr = ugc[:2].upper()
+                state = STATE_ABBR_TO_NAME.get(state_abbr)
+                if state:
+                    return state
+    
+    # Method 3: Parse from areaDesc - look for state abbreviations
+    area_desc = alert.get('areaDesc', '')
+    
+    # Pattern 1: "County Name (ST)" format
+    state_match = re.search(r'\(([A-Z]{2})\)', area_desc)
+    if state_match:
+        state_abbr = state_match.group(1)
+        state = STATE_ABBR_TO_NAME.get(state_abbr)
+        if state:
+            return state
+    
+    # Pattern 2: ", ST" at end (e.g., "Jefferson County, AL")
+    state_match = re.search(r',\s*([A-Z]{2})(?:\s|$|;)', area_desc)
+    if state_match:
+        state_abbr = state_match.group(1)
+        state = STATE_ABBR_TO_NAME.get(state_abbr)
+        if state:
+            return state
+    
+    # Method 4: Check if full state name already in description
+    for state_name in STATE_ABBR_TO_NAME.values():
+        if state_name in area_desc:
+            return state_name
+    
+    return None
+
+
+def format_location_with_state(location: str, state: Optional[str]) -> str:
+    """
+    Format location string to include state name naturally
+    
+    Examples:
+        "Jefferson County" + "Alabama" -> "Jefferson County, Alabama"
+        "Jefferson County; Shelby County" + "Alabama" -> "Jefferson County and Shelby County in Alabama"
+    """
+    if not state:
+        return location
+    
+    # Check if state already in location
+    if state in location or any(abbr for abbr, name in STATE_ABBR_TO_NAME.items() if abbr in location):
+        return location
+    
+    # Handle multiple counties/areas separated by semicolons or "and"
+    if ';' in location or ' and ' in location.lower():
+        # Multiple locations - add "in [State]" at the end
+        # Clean up formatting
+        location = location.replace(';', ' and')
+        return f"{location} in {state}"
+    else:
+        # Single location - add ", [State]"
+        return f"{location}, {state}"
 
 class VoiceStyleManager:
     """Manages different voice styles based on threat levels"""
@@ -124,6 +242,10 @@ class VoiceStyleManager:
         event = alert.get('event', 'Weather Alert')
         location = alert.get('areaDesc', 'your area')
         
+        # 🆕 Extract and add state name to location
+        state = extract_state_from_alert(alert)
+        location = format_location_with_state(location, state)
+        
         # Determine voice style
         style_name = self.get_voice_style_for_threat(threat_score)
         
@@ -238,6 +360,11 @@ class VoiceStyleManager:
         location = pre_alert.get('location', 'your area')
         confidence = pre_alert.get('confidence', 0)
         time_until = pre_alert.get('time_until_alert', '5-15 minutes')
+        
+        # 🆕 Try to extract state if alert object is available
+        if 'alert' in pre_alert:
+            state = extract_state_from_alert(pre_alert['alert'])
+            location = format_location_with_state(location, state)
         
         # Pre-alerts always use urgent or emergency style
         if confidence >= 85:
