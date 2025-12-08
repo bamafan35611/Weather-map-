@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import pytz
 import random
+import re
 
 # Import weather enhancements (temperature, wind, precipitation data)
 try:
@@ -19,6 +20,47 @@ except ImportError as e:
     # Fallback function that does nothing
     def add_environmental_context(text, broadcast_type=None):
         return text
+
+
+def clean_nws_text(text: str) -> str:
+    """
+    Clean up awkward NWS phrasing to make it sound better when spoken
+    This fixes text that comes directly from NWS alert descriptions
+    """
+    if not text:
+        return text
+    
+    # Fix "packing" phrases (common NWS meteorological jargon)
+    replacements = {
+        'packing flooding': 'bringing flooding',
+        'packing floods': 'bringing floods',
+        'packing heavy flooding': 'bringing heavy flooding',
+        'packing flash flooding': 'bringing flash flooding',
+        'packing rainfall': 'bringing rainfall',
+        'packing rain': 'bringing rain',
+        'packing winds': 'bringing winds',
+        'packing severe weather': 'bringing severe weather',
+        'packing thunderstorms': 'bringing thunderstorms',
+        'packing hail': 'bringing hail',
+        'storm is packing': 'storm is bringing',
+        'system is packing': 'system is bringing',
+        'storms are packing': 'storms are bringing',
+        'systems are packing': 'systems are bringing',
+        'front is packing': 'front is bringing',
+        
+        # Other awkward phrases
+        'dumping heavy rain': 'bringing heavy rain',
+        'unloading rainfall': 'bringing rainfall',
+        'producing copious': 'producing heavy',
+    }
+    
+    # Apply replacements (case-insensitive)
+    for bad_phrase, good_phrase in replacements.items():
+        # Use regex for case-insensitive replacement
+        pattern = re.compile(re.escape(bad_phrase), re.IGNORECASE)
+        text = pattern.sub(good_phrase, text)
+    
+    return text
 
 class WeatherCommentary:
     """Generates engaging weather commentary for broadcasting"""
@@ -431,6 +473,9 @@ def get_national_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
     commentary = WeatherCommentary()
     base_briefing = commentary.generate_national_briefing(alerts, scored_alerts)
     
+    # Clean up awkward NWS text
+    base_briefing = clean_nws_text(base_briefing)
+    
     # Add temperature, wind, precipitation context
     if ENHANCEMENTS_AVAILABLE:
         return add_environmental_context(base_briefing, "national_briefing")
@@ -445,6 +490,9 @@ def get_hourly_update(alerts: List[Dict], scored_alerts: List[Dict], local_area:
     hour = datetime.now(central).hour
     base_update = commentary.generate_hourly_update(alerts, scored_alerts, hour, local_area)
     
+    # Clean up awkward NWS text
+    base_update = clean_nws_text(base_update)
+    
     # Add environmental context
     if ENHANCEMENTS_AVAILABLE:
         return add_environmental_context(base_update, "hourly_update")
@@ -455,6 +503,9 @@ def get_weather_story(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
     """Get weather story/narrative with environmental enhancements"""
     commentary = WeatherCommentary()
     base_story = commentary.generate_weather_story(alerts, scored_alerts)
+    
+    # Clean up awkward NWS text
+    base_story = clean_nws_text(base_story)
     
     # Add environmental context
     if ENHANCEMENTS_AVAILABLE:
