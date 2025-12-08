@@ -77,11 +77,15 @@ class WeatherCommentary:
             'Gulf Coast': ['Florida', 'Louisiana', 'Texas', 'Mississippi', 'Alabama']
         }
     
+    def _clean_text(self, text: str) -> str:
+        """Internal method to clean all generated text"""
+        return clean_nws_text(text)
+    
     def generate_national_briefing(self, alerts: List[Dict], scored_alerts: List[Dict]) -> str:
         """Generate a comprehensive national weather briefing"""
         
         if not alerts:
-            return self._generate_quiet_weather_commentary()
+            return self._clean_text(self._generate_quiet_weather_commentary())
         
         lines = []
         
@@ -115,7 +119,8 @@ class WeatherCommentary:
         # Closing
         lines.append(self._get_closing())
         
-        return " ".join(lines)
+        # Clean all the joined text
+        return self._clean_text(" ".join(lines))
     
     def generate_regional_update(self, alerts: List[Dict], region: str = 'Southeast') -> str:
         """Generate regional weather update"""
@@ -196,7 +201,7 @@ class WeatherCommentary:
         """Generate a narrative story about current weather"""
         
         if not alerts:
-            return self._generate_quiet_weather_commentary()
+            return self._clean_text(self._generate_quiet_weather_commentary())
         
         lines = []
         
@@ -228,7 +233,7 @@ class WeatherCommentary:
         # What's coming
         lines.append("We'll continue monitoring these systems and keep you updated.")
         
-        return " ".join(lines)
+        return self._clean_text(" ".join(lines))
     
     def generate_hourly_update(self, alerts: List[Dict], scored_alerts: List[Dict], 
                                hour: int, local_area: str = "North Alabama") -> str:
@@ -273,7 +278,7 @@ class WeatherCommentary:
         
         lines.append("Stay weather aware.")
         
-        return " ".join(lines)
+        return self._clean_text(" ".join(lines))
     
     def _generate_quiet_weather_commentary(self) -> str:
         """Generate commentary when weather is quiet"""
