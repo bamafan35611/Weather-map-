@@ -173,7 +173,21 @@ class AlertAnnouncementManager:
 alert_manager = AlertAnnouncementManager()
 
 app = Flask(__name__, static_folder='static')
-CORS(app)
+
+# Enable CORS for all routes and origins
+# This allows the map to load from anywhere (Render, local file, OBS, etc.)
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Accept"],
+        "expose_headers": ["Content-Type"],
+        "supports_credentials": False,
+        "max_age": 3600
+    }
+})
+
+print("✓ CORS enabled for all API routes")
 
 _model = None
 _model_path = None
