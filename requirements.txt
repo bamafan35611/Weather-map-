@@ -9,3 +9,4 @@ gevent
 psycopg2-binary
 pytz
 websockets
+astral

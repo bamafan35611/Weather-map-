@@ -8,6 +8,18 @@ from datetime import datetime
 import pytz
 import random
 
+# Import weather enhancements (temperature, wind, precipitation data)
+try:
+    from weather_enhancements import add_environmental_context
+    ENHANCEMENTS_AVAILABLE = True
+    print("✓ Weather enhancements loaded - temperature, wind, precipitation data enabled")
+except ImportError as e:
+    print(f"⚠ Weather enhancements not available: {e}")
+    ENHANCEMENTS_AVAILABLE = False
+    # Fallback function that does nothing
+    def add_environmental_context(text, broadcast_type=None):
+        return text
+
 class WeatherCommentary:
     """Generates engaging weather commentary for broadcasting"""
     
@@ -415,24 +427,39 @@ class WeatherCommentary:
 
 # Helper functions for Flask integration
 def get_national_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
-    """Get national weather briefing"""
+    """Get national weather briefing with environmental enhancements"""
     commentary = WeatherCommentary()
-    return commentary.generate_national_briefing(alerts, scored_alerts)
+    base_briefing = commentary.generate_national_briefing(alerts, scored_alerts)
+    
+    # Add temperature, wind, precipitation context
+    if ENHANCEMENTS_AVAILABLE:
+        return add_environmental_context(base_briefing, "national_briefing")
+    return base_briefing
 
 
 def get_hourly_update(alerts: List[Dict], scored_alerts: List[Dict], local_area: str = "North Alabama") -> str:
-    """Get hourly weather update"""
+    """Get hourly weather update with environmental enhancements"""
     commentary = WeatherCommentary()
     # Use Central Time (Alabama time zone)
     central = pytz.timezone('America/Chicago')
     hour = datetime.now(central).hour
-    return commentary.generate_hourly_update(alerts, scored_alerts, hour, local_area)
+    base_update = commentary.generate_hourly_update(alerts, scored_alerts, hour, local_area)
+    
+    # Add environmental context
+    if ENHANCEMENTS_AVAILABLE:
+        return add_environmental_context(base_update, "hourly_update")
+    return base_update
 
 
 def get_weather_story(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
-    """Get weather story/narrative"""
+    """Get weather story/narrative with environmental enhancements"""
     commentary = WeatherCommentary()
-    return commentary.generate_weather_story(alerts, scored_alerts)
+    base_story = commentary.generate_weather_story(alerts, scored_alerts)
+    
+    # Add environmental context
+    if ENHANCEMENTS_AVAILABLE:
+        return add_environmental_context(base_story, "weather_story")
+    return base_story
 
 
 if __name__ == '__main__':
