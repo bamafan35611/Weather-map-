@@ -3160,12 +3160,12 @@ function showAutoAlertPopup(alert) {
         left: 20px;
         background: rgba(0,0,0,0.95);
         color: white;
-        padding: 12px;
-        border-radius: 8px;
-        border: 2px solid ${alert.properties.color || '#ff6666'};
-        width: 280px;
+        padding: 20px;
+        border-radius: 12px;
+        border: 3px solid ${alert.properties.color || '#ff6666'};
+        width: 450px;
         z-index: 10000;
-        box-shadow: 0 6px 16px rgba(0,0,0,0.8);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.9);
         font-family: Arial, sans-serif;
         animation: alertPopupSlide 0.3s ease-in;
         pointer-events: none;
@@ -3182,33 +3182,33 @@ function showAutoAlertPopup(alert) {
     
     const content = document.createElement('div');
     content.innerHTML = `
-        <div style="display: flex; align-items: center; margin-bottom: 8px;">
-            <div style="background: ${alert.properties.priority === 'HIGH' ? '#ff4444' : '#ffaa44'}; color: white; padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: bold; margin-right: 8px;">
+        <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <div style="background: ${alert.properties.priority === 'HIGH' ? '#ff4444' : '#ffaa44'}; color: white; padding: 6px 14px; border-radius: 12px; font-size: 16px; font-weight: bold; margin-right: 12px;">
                 ${alert.properties.priority}
             </div>
-            <div style="font-size: 11px; color: #ffff88;">
+            <div style="font-size: 18px; color: #ffff88; font-weight: bold;">
                 ${alert.properties.isWarning ? 'WARNING' : 'ALERT'}
             </div>
         </div>
         
-        <h4 style="margin: 0 0 8px 0; color: ${alert.properties.color || '#ff6666'}; font-size: 14px; line-height: 1.2;">
+        <h4 style="margin: 0 0 12px 0; color: ${alert.properties.color || '#ff6666'}; font-size: 22px; line-height: 1.3; font-weight: bold;">
             ${alert.properties.event || 'Weather Alert'}
         </h4>
         
-        <div style="background: rgba(255,255,255,0.1); padding: 8px; border-radius: 4px; margin: 8px 0;">
-            <p style="margin: 0; font-size: 11px; line-height: 1.3;">
-                ${(alert.properties.headline || 'Weather alert in effect').substring(0, 120)}${(alert.properties.headline || '').length > 120 ? '...' : ''}
+        <div style="background: rgba(255,255,255,0.15); padding: 12px; border-radius: 6px; margin: 12px 0;">
+            <p style="margin: 0; font-size: 16px; line-height: 1.5; font-weight: 500;">
+                ${(alert.properties.headline || 'Weather alert in effect').substring(0, 150)}${(alert.properties.headline || '').length > 150 ? '...' : ''}
             </p>
         </div>
         
-        <div style="margin: 6px 0;">
-            <p style="margin: 0; font-size: 10px; color: #cccccc;">
-                <strong style="color: #88ffff;">Areas:</strong> ${(alert.properties.areaDesc || 'Multiple areas').substring(0, 50)}${(alert.properties.areaDesc || '').length > 50 ? '...' : ''}
+        <div style="margin: 10px 0;">
+            <p style="margin: 0; font-size: 15px; color: #dddddd; line-height: 1.4;">
+                <strong style="color: #88ffff; font-size: 16px;">Areas:</strong> ${(alert.properties.areaDesc || 'Multiple areas').substring(0, 80)}${(alert.properties.areaDesc || '').length > 80 ? '...' : ''}
             </p>
         </div>
         
-        <div style="margin-top: 8px; padding: 6px; background: rgba(255,255,0,0.2); border-radius: 4px;">
-            <p style="margin: 0; font-size: 9px; color: #ffff88; text-align: center;">
+        <div style="margin-top: 12px; padding: 10px; background: rgba(255,255,0,0.25); border-radius: 6px; border: 1px solid rgba(255,255,0,0.4);">
+            <p style="margin: 0; font-size: 14px; color: #ffff88; text-align: center; font-weight: 500;">
                 Map stays zoomed until speech completes
             </p>
         </div>
