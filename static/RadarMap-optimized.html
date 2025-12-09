@@ -261,6 +261,11 @@ const VOICE_RELAY_URL = 'ws://localhost:8765';  // Local relay server
 let voiceRelayWS = null;
 let voiceRelayConnected = false;
 
+// === Alert Filtering Configuration ===
+const MAX_ALERTS_PER_BATCH = 3;  // Maximum alerts to announce at once (prevents overload)
+const WARNINGS_ONLY = true;      // Only announce warnings (not watches/advisories)
+const HIGH_PRIORITY_ONLY = false; // Only announce HIGH priority alerts (your local area)
+
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
 const __api_qp = new URLSearchParams(location.search);
@@ -286,6 +291,11 @@ const readAlerts = new Set();
 let countyLayerVisible = false;
 let outlooksVisible = true;
 let watchesVisible = true;
+
+// Briefing and alert coordination
+let _briefingInProgress = false;
+let _pendingAlertsQueue = [];
+let _lastBriefingCheck = 0;
 
 // Zone geometry cache to avoid repeated API calls
 const zoneGeometryCache = new Map();
@@ -1469,8 +1479,20 @@ function connectVoiceRelay() {
         voiceRelayWS.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                
                 if (data.status === 'connected' && data.role === 'obs') {
                     console.log('[voice-relay] Registered as OBS client');
+                }
+                
+                // Handle briefing coordination messages
+                if (data.type === 'briefing_start') {
+                    console.log('[voice-relay] 📢 Briefing started - alerts paused');
+                    startBriefing();
+                }
+                
+                if (data.type === 'briefing_end') {
+                    console.log('[voice-relay] ✓ Briefing ended - processing queued alerts');
+                    endBriefing();
                 }
             } catch (error) {
                 console.error('[voice-relay] Message parse error:', error);
@@ -2310,6 +2332,14 @@ function buildAlertSpeech(alertFeature, options = {}) {
 
 
 async function handleNewAlerts(newAlerts) {
+    // CRITICAL: Don't interrupt scheduled briefings!
+    if (_briefingInProgress) {
+        console.log("[Alert] 📢 Briefing in progress - queueing alerts for after briefing");
+        _pendingAlertsQueue.push(...newAlerts);
+        console.log(`[Alert] Queue now has ${_pendingAlertsQueue.length} pending alerts`);
+        return;
+    }
+    
     // Prevent concurrent execution
     if (_alertProcessingInProgress) {
         console.log("[Alert] Skipping - another alert sequence is already running");
@@ -2431,6 +2461,54 @@ setProcessingFlag(true, 'New alert processing start');
         // ALWAYS reset the flag, even if there's an error
         setProcessingFlag(false, 'New alert processing finished');
         console.log("[Alert] Processing flag reset");
+    }
+}
+
+// === BRIEFING COORDINATION FUNCTIONS ===
+
+function startBriefing() {
+    console.log("[Briefing] 📢 Starting scheduled briefing - alerts will be queued");
+    _briefingInProgress = true;
+    _lastBriefingCheck = Date.now();
+}
+
+function endBriefing() {
+    console.log("[Briefing] ✓ Briefing complete");
+    _briefingInProgress = false;
+    
+    // Process any queued alerts
+    if (_pendingAlertsQueue.length > 0) {
+        console.log(`[Briefing] 🔔 Processing ${_pendingAlertsQueue.length} queued alerts`);
+        const queuedAlerts = [..._pendingAlertsQueue];
+        _pendingAlertsQueue = [];
+        handleNewAlerts(queuedAlerts);
+    }
+}
+
+function checkForBriefing() {
+    const now = new Date();
+    const minute = now.getMinutes();
+    
+    // Check if we're at a briefing time (00, 15, 30, 45)
+    const isBriefingTime = (minute === 0 || minute === 15 || minute === 30 || minute === 45);
+    
+    if (isBriefingTime && !_briefingInProgress) {
+        // Only start if we haven't checked this minute already
+        const currentTime = now.getTime();
+        const timeSinceLastCheck = currentTime - _lastBriefingCheck;
+        
+        if (timeSinceLastCheck > 60000) { // More than 1 minute since last check
+            console.log(`[Briefing] ⏰ Briefing time detected (XX:${minute.toString().padStart(2, '0')})`);
+            startBriefing();
+            
+            // Auto-end briefing after 3 minutes (adjust as needed)
+            setTimeout(() => {
+                if (_briefingInProgress) {
+                    console.log("[Briefing] ⏱️ Auto-ending briefing after timeout");
+                    endBriefing();
+                }
+            }, 180000); // 3 minutes
+        }
     }
 }
 
@@ -2580,8 +2658,63 @@ async function fetchAlerts() {
                     });
         
                     if (newAlerts.length > 0) {
-                        console.log(`Processing ${newAlerts.length} viewport-visible alerts`);
-                        handleNewAlerts(newAlerts);
+                        console.log(`Found ${newAlerts.length} new viewport-visible alerts`);
+                        
+                        // === SMART FILTERING TO PREVENT ALERT OVERLOAD ===
+                        let filteredAlerts = [...newAlerts];
+                        
+                        // Filter 1: Only warnings (if enabled)
+                        if (WARNINGS_ONLY) {
+                            const warningsOnly = filteredAlerts.filter(a => 
+                                (a.properties.event || '').toLowerCase().includes('warning')
+                            );
+                            
+                            if (warningsOnly.length > 0) {
+                                console.log(`[Filter] Warnings only: ${warningsOnly.length}/${filteredAlerts.length} (skipped ${filteredAlerts.length - warningsOnly.length} non-warnings)`);
+                                filteredAlerts = warningsOnly;
+                            }
+                        }
+                        
+                        // Filter 2: Only HIGH priority (if enabled)
+                        if (HIGH_PRIORITY_ONLY) {
+                            const highPriority = filteredAlerts.filter(a => a.properties.priority === 'HIGH');
+                            
+                            if (highPriority.length > 0) {
+                                console.log(`[Filter] HIGH priority only: ${highPriority.length}/${filteredAlerts.length} (skipped ${filteredAlerts.length - highPriority.length} lower priority)`);
+                                filteredAlerts = highPriority;
+                            }
+                        } else {
+                            // If not filtering to HIGH only, at least prioritize them
+                            const highPriority = filteredAlerts.filter(a => a.properties.priority === 'HIGH');
+                            
+                            if (highPriority.length > 0 && highPriority.length < filteredAlerts.length) {
+                                console.log(`[Filter] Prioritizing ${highPriority.length} HIGH priority alerts`);
+                                filteredAlerts = highPriority;
+                            }
+                        }
+                        
+                        // Filter 3: Limit to maximum alerts per batch
+                        if (filteredAlerts.length > MAX_ALERTS_PER_BATCH) {
+                            console.log(`[Filter] Too many alerts (${filteredAlerts.length}) - limiting to top ${MAX_ALERTS_PER_BATCH}`);
+                            
+                            // Sort by severity and take top N
+                            filteredAlerts.sort((a, b) => {
+                                const scoreA = getEventPriorityScoreFromProps(a.properties);
+                                const scoreB = getEventPriorityScoreFromProps(b.properties);
+                                return scoreB - scoreA; // Highest score first
+                            });
+                            
+                            filteredAlerts = filteredAlerts.slice(0, MAX_ALERTS_PER_BATCH);
+                        }
+                        
+                        console.log(`[Filter] ✓ Final: ${filteredAlerts.length} alerts will be announced`);
+                        console.log(`[Filter] ⊗ Skipped: ${newAlerts.length - filteredAlerts.length} alerts`);
+                        
+                        if (filteredAlerts.length > 0) {
+                            handleNewAlerts(filteredAlerts);
+                        } else {
+                            console.log("[Filter] No alerts passed filters - skipping announcement");
+                        }
                     } else {
                         console.log("No new alerts in current viewport to process");
                     }
@@ -3762,6 +3895,9 @@ function startScheduler() {
     let t = 0;
     setInterval(() => {
         t++;
+        
+        // Check if we're at a briefing time (00, 15, 30, 45)
+        try { checkForBriefing(); } catch(e){}
         
         // Always fetch data regardless of visibility
         if (t % ALERT_POLL_INTERVAL === 0) { try { fetchAlerts(); } catch(e){} }
