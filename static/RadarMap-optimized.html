@@ -2404,13 +2404,16 @@ setProcessingFlag(true, 'New alert processing start');
                         return;
                     }
                     
-                    await new Promise(resolve => setTimeout(resolve, 2500));
+                    // Wait 15 seconds at home position before next alert
+                    console.log("Waiting 15 seconds at home position...");
+                    await new Promise(resolve => setTimeout(resolve, 15000));
                 } else {
                     console.log(`[zoom-fix] User moved map - skipping zoom back, staying at current position`);
                 }
                 
                 if (i < newAlerts.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    console.log("Moving to next alert...");
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Short buffer
                 } else {
                     // CRITICAL FIX: Wait after last alert before clearing flag
                     console.log(`[Alert] Last alert processed, waiting 5 seconds before releasing lock...`);
