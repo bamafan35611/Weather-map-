@@ -1,380 +1,143 @@
 """
-forecast_db.py - Database module for forecast tracking
-Supports both SQLite (local) and PostgreSQL (Render)
+INTEGRATION GUIDE: Adding Actual Forecasts to NorthBamaWX
+
+PROBLEM IDENTIFIED:
+Your system currently only announces weather ALERTS (warnings/watches) but doesn't 
+announce the actual FORECAST for Athens, AL. This means on a clear day with no alerts,
+it might still say "stormy weather" if there are alerts elsewhere in the country.
+
+SOLUTION:
+Add this new forecast fetcher to get actual Athens, AL forecast data.
+
+STEP 1: Add nws_forecast_fetcher.py to your project
+- Copy nws_forecast_fetcher.py into your Weather-map--main directory
+- Add it to your git repo and push to Render
+
+STEP 2: Update app.py to include forecast data
+Add this import at the top of app.py:
+
+    from nws_forecast_fetcher import get_athens_forecast, get_forecast_fetcher
+
+STEP 3: Add a new API endpoint in app.py:
+
+    @app.route('/api/local-forecast')
+    def local_forecast():
+        '''Get actual forecast for Athens, AL'''
+        try:
+            fetcher = get_forecast_fetcher()
+            forecast_data = fetcher.get_home_forecast()
+            
+            if forecast_data:
+                return jsonify({
+                    'success': True,
+                    'location': 'Athens, AL',
+                    'forecast': forecast_data,
+                    'summary': fetcher.get_short_forecast_summary(forecast_data, 3),
+                    'athens_broadcast': fetcher.get_athens_forecast_specifically(),
+                    'severe_expected': fetcher.is_severe_weather_expected(forecast_data)
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Could not fetch forecast'
+                }), 500
+        except Exception as e:
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+
+STEP 4: Update weather_commentary.py
+
+In your generate_hourly_update() method, add local forecast:
+
+    def generate_hourly_update(self, alerts: List[Dict], scored_alerts: List[Dict], 
+                               hour: int, local_area: str = "North Alabama") -> str:
+        '''Generate hourly update WITH local forecast'''
+        
+        lines = []
+        
+        # START WITH LOCAL FORECAST (this fixes your issue!)
+        try:
+            from nws_forecast_fetcher import get_athens_forecast
+            athens_forecast = get_athens_forecast()
+            lines.append(athens_forecast)
+        except Exception as e:
+            print(f"Could not get local forecast: {e}")
+        
+        # Then add alert information if any
+        if alerts:
+            local_alerts = self._filter_by_location(alerts, local_area)
+            if local_alerts:
+                lines.append(f"We're also monitoring {len(local_alerts)} active alerts in the area.")
+                for alert in local_alerts[:2]:
+                    event = alert.get('event')
+                    location = alert.get('areaDesc', 'the area')
+                    lines.append(f"{event} for {location}.")
+        
+        return " ".join(lines)
+
+STEP 5: Update the broadcaster endpoint
+
+In app.py, modify the /api/weather-broadcast endpoint to include local forecast:
+
+Around line 982 in your current code, change the hourly update section to:
+
+    # :15 - Hourly Update WITH LOCAL FORECAST
+    elif current_minute == 15:
+        # Get local forecast first
+        try:
+            from nws_forecast_fetcher import get_athens_forecast
+            local_forecast = get_athens_forecast()
+            broadcast_data['content'].append({
+                'type': 'local_forecast',
+                'text': local_forecast,
+                'duration_estimate': '15-20 seconds'
+            })
+        except Exception as e:
+            print(f"Error getting local forecast: {e}")
+        
+        # Then add commentary
+        update = get_hourly_update(alerts, scored, "North Alabama")
+        broadcast_data['broadcast_type'] = 'hourly_update'
+        broadcast_data['content'].append({
+            'type': 'commentary',
+            'text': update,
+            'duration_estimate': '15-30 seconds'
+        })
+
+STEP 6: Test your changes
+
+After deploying, test with:
+
+    curl https://your-app.onrender.com/api/local-forecast
+
+You should see actual Athens, AL forecast data!
+
+STEP 7: Update your front-end broadcaster
+
+In your obs-auto-broadcaster.html or northbamawx-broadcaster.js, 
+make sure it reads the 'local_forecast' content type and announces it.
+
+WHY THIS FIXES YOUR ISSUE:
+========================================
+Before: Your bot only looked at ALERTS (warnings/watches) which might not exist 
+        for Athens even when weather is happening, OR might exist elsewhere 
+        making it think Athens has bad weather when it doesn't.
+
+After:  Your bot will ALWAYS announce the actual NWS forecast for Athens, AL,
+        which tells you what weather is EXPECTED, not just what ALERTS are active.
+
+Example output BEFORE fix:
+"Currently monitoring 50 active weather alerts across the nation. 
+Severe weather in Oklahoma City..."
+(User in Athens: "But it's sunny here?!")
+
+Example output AFTER fix:
+"Athens, Alabama: Today, Sunny. High of 65 degrees. 
+Nationwide, we're monitoring 50 active weather alerts..."
+(User in Athens: "Perfect, that's accurate!")
 """
 
-import os
-import json
-from datetime import datetime, timedelta
-from contextlib import contextmanager
-
-# Determine database type from environment
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
-USE_POSTGRES = DATABASE_URL.startswith('postgres')
-
-if USE_POSTGRES:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    # Fix for Render's postgres:// URLs
-    if DATABASE_URL.startswith('postgres://'):
-        DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-else:
-    import sqlite3
-
-@contextmanager
-def get_db():
-    """Context manager for database connections"""
-    if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-    else:
-        conn = sqlite3.connect('weather_forecasts.db')
-        conn.row_factory = sqlite3.Row
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
-
-def init_database():
-    """Initialize the database schema"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        
-        if USE_POSTGRES:
-            # PostgreSQL schema
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS forecasts (
-                    id SERIAL PRIMARY KEY,
-                    timestamp TIMESTAMP NOT NULL,
-                    forecast_for TIMESTAMP NOT NULL,
-                    location TEXT NOT NULL,
-                    latitude REAL,
-                    longitude REAL,
-                    prediction_type TEXT NOT NULL,
-                    predicted_severity TEXT,
-                    confidence REAL,
-                    details TEXT,
-                    verified INTEGER DEFAULT 0,
-                    verification_result TEXT,
-                    verification_timestamp TIMESTAMP,
-                    actual_event TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS actual_events (
-                    id SERIAL PRIMARY KEY,
-                    timestamp TIMESTAMP NOT NULL,
-                    event_type TEXT NOT NULL,
-                    location TEXT NOT NULL,
-                    latitude REAL,
-                    longitude REAL,
-                    severity TEXT,
-                    details TEXT,
-                    nws_id TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-        else:
-            # SQLite schema
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS forecasts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    forecast_for TEXT NOT NULL,
-                    location TEXT NOT NULL,
-                    latitude REAL,
-                    longitude REAL,
-                    prediction_type TEXT NOT NULL,
-                    predicted_severity TEXT,
-                    confidence REAL,
-                    details TEXT,
-                    verified INTEGER DEFAULT 0,
-                    verification_result TEXT,
-                    verification_timestamp TEXT,
-                    actual_event TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS actual_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    location TEXT NOT NULL,
-                    latitude REAL,
-                    longitude REAL,
-                    severity TEXT,
-                    details TEXT,
-                    nws_id TEXT,
-                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-        
-        print("✓ Database initialized successfully (PostgreSQL)" if USE_POSTGRES else "✓ Database initialized successfully (SQLite)")
-
-def save_forecast(forecast_data):
-    """Save a new forecast prediction"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        
-        if USE_POSTGRES:
-            cursor.execute('''
-                INSERT INTO forecasts 
-                (timestamp, forecast_for, location, latitude, longitude, 
-                 prediction_type, predicted_severity, confidence, details)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            ''', (
-                forecast_data.get('timestamp', datetime.utcnow()),
-                forecast_data.get('forecast_for'),
-                forecast_data.get('location'),
-                forecast_data.get('latitude'),
-                forecast_data.get('longitude'),
-                forecast_data.get('prediction_type'),
-                forecast_data.get('predicted_severity'),
-                forecast_data.get('confidence'),
-                json.dumps(forecast_data.get('details', {}))
-            ))
-            forecast_id = cursor.fetchone()[0]
-        else:
-            cursor.execute('''
-                INSERT INTO forecasts 
-                (timestamp, forecast_for, location, latitude, longitude, 
-                 prediction_type, predicted_severity, confidence, details)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                forecast_data.get('timestamp', datetime.utcnow().isoformat()),
-                forecast_data.get('forecast_for'),
-                forecast_data.get('location'),
-                forecast_data.get('latitude'),
-                forecast_data.get('longitude'),
-                forecast_data.get('prediction_type'),
-                forecast_data.get('predicted_severity'),
-                forecast_data.get('confidence'),
-                json.dumps(forecast_data.get('details', {}))
-            ))
-            forecast_id = cursor.lastrowid
-        
-        print(f"✓ Saved forecast #{forecast_id}: {forecast_data.get('prediction_type')} for {forecast_data.get('location')}")
-        return forecast_id
-
-def save_actual_event(event_data):
-    """Save an actual weather event for verification"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        
-        if USE_POSTGRES:
-            cursor.execute('''
-                INSERT INTO actual_events 
-                (timestamp, event_type, location, latitude, longitude, severity, details, nws_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            ''', (
-                event_data.get('timestamp', datetime.utcnow()),
-                event_data.get('event_type'),
-                event_data.get('location'),
-                event_data.get('latitude'),
-                event_data.get('longitude'),
-                event_data.get('severity'),
-                json.dumps(event_data.get('details', {})),
-                event_data.get('nws_id')
-            ))
-            event_id = cursor.fetchone()[0]
-        else:
-            cursor.execute('''
-                INSERT INTO actual_events 
-                (timestamp, event_type, location, latitude, longitude, severity, details, nws_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                event_data.get('timestamp', datetime.utcnow().isoformat()),
-                event_data.get('event_type'),
-                event_data.get('location'),
-                event_data.get('latitude'),
-                event_data.get('longitude'),
-                event_data.get('severity'),
-                json.dumps(event_data.get('details', {})),
-                event_data.get('nws_id')
-            ))
-            event_id = cursor.lastrowid
-        
-        print(f"✓ Saved actual event #{event_id}: {event_data.get('event_type')} in {event_data.get('location')}")
-        return event_id
-
-def get_unverified_forecasts():
-    """Get all forecasts that haven't been verified yet and are past their forecast time"""
-    with get_db() as conn:
-        if USE_POSTGRES:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute('''
-                SELECT * FROM forecasts 
-                WHERE verified = 0 AND forecast_for < NOW()
-                ORDER BY forecast_for ASC
-            ''')
-        else:
-            cursor = conn.cursor()
-            now = datetime.utcnow().isoformat()
-            cursor.execute('''
-                SELECT * FROM forecasts 
-                WHERE verified = 0 AND forecast_for < ?
-                ORDER BY forecast_for ASC
-            ''', (now,))
-        return [dict(row) for row in cursor.fetchall()]
-
-def verify_forecast(forecast_id, result, actual_event=None):
-    """Mark a forecast as verified with the result"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        
-        if USE_POSTGRES:
-            cursor.execute('''
-                UPDATE forecasts 
-                SET verified = 1, 
-                    verification_result = %s,
-                    verification_timestamp = NOW(),
-                    actual_event = %s
-                WHERE id = %s
-            ''', (result, actual_event, forecast_id))
-        else:
-            cursor.execute('''
-                UPDATE forecasts 
-                SET verified = 1, 
-                    verification_result = ?,
-                    verification_timestamp = ?,
-                    actual_event = ?
-                WHERE id = ?
-            ''', (result, datetime.utcnow().isoformat(), actual_event, forecast_id))
-        
-        print(f"✓ Verified forecast #{forecast_id}: {result}")
-
-def get_forecast_history(limit=50):
-    """Get verified forecast history"""
-    with get_db() as conn:
-        if USE_POSTGRES:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute('''
-                SELECT * FROM forecasts 
-                WHERE verified = 1 
-                ORDER BY verification_timestamp DESC 
-                LIMIT %s
-            ''', (limit,))
-        else:
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM forecasts 
-                WHERE verified = 1 
-                ORDER BY verification_timestamp DESC 
-                LIMIT ?
-            ''', (limit,))
-        return [dict(row) for row in cursor.fetchall()]
-
-def get_accuracy_stats(days=30):
-    """Calculate accuracy statistics"""
-    with get_db() as conn:
-        if USE_POSTGRES:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute('''
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN verification_result = 'correct' THEN 1 ELSE 0 END) as correct,
-                    SUM(CASE WHEN verification_result = 'false_positive' THEN 1 ELSE 0 END) as false_positives,
-                    SUM(CASE WHEN verification_result = 'false_negative' THEN 1 ELSE 0 END) as false_negatives
-                FROM forecasts 
-                WHERE verified = 1 AND verification_timestamp > NOW() - INTERVAL '%s days'
-            ''' % days)
-        else:
-            cursor = conn.cursor()
-            since = (datetime.utcnow() - timedelta(days=days)).isoformat()
-            cursor.execute('''
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN verification_result = 'correct' THEN 1 ELSE 0 END) as correct,
-                    SUM(CASE WHEN verification_result = 'false_positive' THEN 1 ELSE 0 END) as false_positives,
-                    SUM(CASE WHEN verification_result = 'false_negative' THEN 1 ELSE 0 END) as false_negatives
-                FROM forecasts 
-                WHERE verified = 1 AND verification_timestamp > ?
-            ''', (since,))
-        
-        row = cursor.fetchone()
-        if row and row['total'] > 0:
-            total = row['total']
-            correct = row['correct'] or 0
-            accuracy = (correct / total) * 100 if total > 0 else 0
-            
-            return {
-                'total_forecasts': total,
-                'correct': correct,
-                'false_positives': row['false_positives'] or 0,
-                'false_negatives': row['false_negatives'] or 0,
-                'accuracy_percentage': round(accuracy, 2),
-                'days': days
-            }
-        return {
-            'total_forecasts': 0,
-            'correct': 0,
-            'false_positives': 0,
-            'false_negatives': 0,
-            'accuracy_percentage': 0,
-            'days': days
-        }
-
-def format_history_for_frontend(forecasts):
-    """Format forecast history for the frontend display"""
-    history = []
-    for f in forecasts:
-        timestamp = f.get('verification_timestamp') or f.get('timestamp')
-        if isinstance(timestamp, datetime):
-            timestamp = timestamp.isoformat()
-            
-        prediction = f['prediction_type']
-        location = f['location']
-        result = f.get('verification_result')
-        
-        # Format result emoji
-        if result == 'correct':
-            result_icon = '✓ CORRECT'
-            result_color = '#00ff00'
-        elif result == 'false_positive':
-            result_icon = '✗ FALSE ALARM'
-            result_color = '#ffaa00'
-        elif result == 'false_negative':
-            result_icon = '✗ MISSED'
-            result_color = '#ff4444'
-        else:
-            result_icon = '? UNKNOWN'
-            result_color = '#888888'
-        
-        # Build event description
-        severity = f.get('predicted_severity') or 'unknown'
-        confidence = f.get('confidence')
-        conf_text = f" ({int(confidence)}% confidence)" if confidence else ""
-        
-        event_text = f"Predicted {prediction} ({severity}) for {location}{conf_text} - {result_icon}"
-        
-        history.append({
-            'timestamp': timestamp,
-            'event': event_text,
-            'result': result,
-            'color': result_color
-        })
-    
-    return history
-
-# Initialize database on module import
-try:
-    init_database()
-except Exception as e:
-    print(f"Warning: Could not initialize database: {e}")
+# This file is documentation only - follow the steps above to integrate
+print(__doc__)
