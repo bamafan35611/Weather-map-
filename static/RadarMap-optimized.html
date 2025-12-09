@@ -296,6 +296,8 @@ let watchesVisible = true;
 let _briefingInProgress = false;
 let _pendingAlertsQueue = [];
 let _lastBriefingCheck = 0;
+let _waitingForSpeechCompletion = false;
+let _speechCompletionResolver = null;
 
 // Zone geometry cache to avoid repeated API calls
 const zoneGeometryCache = new Map();
@@ -1494,6 +1496,16 @@ function connectVoiceRelay() {
                     console.log('[voice-relay] ✓ Briefing ended - processing queued alerts');
                     endBriefing();
                 }
+                
+                // Handle speech completion signal
+                if (data.type === 'speech_complete') {
+                    console.log('[voice-relay] 🎤 Speech completed (confirmed by backend)');
+                    if (_speechCompletionResolver) {
+                        _speechCompletionResolver();
+                        _speechCompletionResolver = null;
+                    }
+                    _waitingForSpeechCompletion = false;
+                }
             } catch (error) {
                 console.error('[voice-relay] Message parse error:', error);
             }
@@ -2407,27 +2419,44 @@ setProcessingFlag(true, 'New alert processing start');
                     const alertSpeech = buildAlertSpeech(alert);
                     console.log("Speaking alert - map will stay zoomed until speech completes...");
                     
-                    // Calculate expected speech duration
-                    // Average: ~150 words per minute, or ~2.5 words per second
+                    // Calculate expected speech duration as fallback
                     const wordCount = alertSpeech.split(/\s+/).length;
-                    const estimatedSeconds = Math.ceil(wordCount / 2.5); // Words per second
-                    const speechDuration = Math.max(20, Math.min(estimatedSeconds, 60)); // Between 20-60 seconds
+                    const baseSeconds = Math.ceil(wordCount / 2.2); // Slower rate for safety
+                    const speechDuration = Math.max(25, Math.min(baseSeconds, 75)); // Between 25-75 seconds
                     
                     console.log(`[Speech] ${wordCount} words, estimated ${speechDuration} seconds`);
+                    console.log(`[Speech] Alert text: "${alertSpeech.substring(0, 100)}..."`);
                     
                     // Start speaking
                     const speechPromise = speakText(alertSpeech, 'alert');
                     
-                    // Wait for speech to complete (or estimated duration + buffer)
-                    console.log(`Holding zoom for ${speechDuration} seconds...`);
+                    // Create a promise that waits for backend signal OR timeout
+                    const backendSignalPromise = new Promise(resolve => {
+                        if (USE_VOICE_RELAY && voiceRelayConnected) {
+                            _waitingForSpeechCompletion = true;
+                            _speechCompletionResolver = resolve;
+                            console.log('[Speech] Waiting for backend completion signal...');
+                        } else {
+                            // Not using relay, resolve immediately
+                            resolve();
+                        }
+                    });
+                    
+                    // Wait for EITHER backend signal OR estimated duration timeout
+                    console.log(`Holding zoom for up to ${speechDuration} seconds (or until backend signals)...`);
                     await Promise.race([
-                        speechPromise,
-                        new Promise(resolve => setTimeout(resolve, speechDuration * 1000))
+                        backendSignalPromise,
+                        new Promise(resolve => setTimeout(() => {
+                            console.log('[Speech] Timeout reached, moving on...');
+                            _waitingForSpeechCompletion = false;
+                            _speechCompletionResolver = null;
+                            resolve();
+                        }, speechDuration * 1000))
                     ]);
                     
-                    // Add 3 second buffer after speech
-                    console.log("Speech complete - waiting 3 seconds buffer...");
-                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    // Add 5 second buffer after speech
+                    console.log("Speech complete - waiting 5 seconds buffer...");
+                    await new Promise(resolve => setTimeout(resolve, 5000));
                     console.log("Now zooming out...");
                 } else{
                     console.log("Speech disabled - holding zoom for 8 seconds...");
