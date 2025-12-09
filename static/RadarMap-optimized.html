@@ -2405,11 +2405,30 @@ setProcessingFlag(true, 'New alert processing start');
                 
                 if (speechEnabled) {
                     const alertSpeech = buildAlertSpeech(alert);
-                    console.log("Speaking alert - map will stay zoomed for 30 seconds...");
-                    speakText(alertSpeech, 'alert');
-                    console.log("Holding zoom for 30 seconds...");
-                    await new Promise(resolve => setTimeout(resolve, 30000));
-                    console.log("30 seconds complete - now zooming out...");
+                    console.log("Speaking alert - map will stay zoomed until speech completes...");
+                    
+                    // Calculate expected speech duration
+                    // Average: ~150 words per minute, or ~2.5 words per second
+                    const wordCount = alertSpeech.split(/\s+/).length;
+                    const estimatedSeconds = Math.ceil(wordCount / 2.5); // Words per second
+                    const speechDuration = Math.max(20, Math.min(estimatedSeconds, 60)); // Between 20-60 seconds
+                    
+                    console.log(`[Speech] ${wordCount} words, estimated ${speechDuration} seconds`);
+                    
+                    // Start speaking
+                    const speechPromise = speakText(alertSpeech, 'alert');
+                    
+                    // Wait for speech to complete (or estimated duration + buffer)
+                    console.log(`Holding zoom for ${speechDuration} seconds...`);
+                    await Promise.race([
+                        speechPromise,
+                        new Promise(resolve => setTimeout(resolve, speechDuration * 1000))
+                    ]);
+                    
+                    // Add 3 second buffer after speech
+                    console.log("Speech complete - waiting 3 seconds buffer...");
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    console.log("Now zooming out...");
                 } else{
                     console.log("Speech disabled - holding zoom for 8 seconds...");
                     await new Promise(resolve => setTimeout(resolve, 8000));
