@@ -265,7 +265,7 @@ let voiceRelayConnected = false;
 // NOW MONITORING: North Alabama + Southern Tennessee counties ONLY
 // All alerts from monitored zones are automatically HIGH priority
 const MAX_ALERTS_PER_BATCH = 3;  // Maximum alerts to announce at once (prevents overload)
-const WARNINGS_ONLY = true;      // Only announce warnings (not watches/advisories)
+const WARNINGS_ONLY = false;     // Announce ALL alerts: warnings, watches, and advisories
 const HIGH_PRIORITY_ONLY = false; // Not needed - all monitored alerts are HIGH priority
 
 
