@@ -315,6 +315,8 @@ let allActiveAlerts = [];
 let initialWarningZoomScheduled = false;
 let alertSystemReady = false;           // Enable new-alert auto-zoom only after first zoom cycle
 let latestAllAlerts = [];               // Snapshot of last alerts for summaries
+let latestForecastData = null;          // Cache for Athens forecast data
+let lastForecastFetch = 0;              // Timestamp of last forecast fetch
 let hourlyBroadcastScheduled = false;   // Top-of-hour national update scheduler
 let localBroadcastScheduled = false;    // :30 North Alabama update scheduler
 
@@ -955,9 +957,46 @@ async function runLocalNorthAlabamaBroadcast() {
     }
 }
 
+// === FORECAST DATA FETCHER ===
+async function fetchForecastData() {
+    try {
+        // Only fetch if data is older than 30 minutes
+        const now = Date.now();
+        if (latestForecastData && (now - lastForecastFetch) < 30 * 60 * 1000) {
+            return latestForecastData;
+        }
+
+        console.log('[Forecast] Fetching Athens forecast data...');
+        
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/forecast-debug', {
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            timeout: 10000
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.forecast && data.forecast.periods && data.forecast.periods.length > 0) {
+                latestForecastData = data.forecast;
+                lastForecastFetch = now;
+                console.log('[Forecast] Successfully fetched forecast data');
+                return latestForecastData;
+            }
+        }
+        
+        console.warn('[Forecast] Could not fetch forecast data');
+        return null;
+    } catch (err) {
+        console.error('[Forecast] Error fetching forecast:', err);
+        return null;
+    }
+}
+
 // === ROTATING 15-MINUTE BROADCAST SYSTEM ===
 
-// :00 - Top of Hour: Alert Status Update
+// :00 - Top of Hour: Alert Status Update + Current Conditions
 async function runTopOfHourUpdate() {
     try {
         if (!speechEnabled) {
@@ -966,6 +1005,8 @@ async function runTopOfHourUpdate() {
         }
 
         const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const forecast = await fetchForecastData();
+        
         const now = new Date();
         const hour = now.toLocaleTimeString('en-US', {
             timeZone: 'America/Chicago',
@@ -973,10 +1014,18 @@ async function runTopOfHourUpdate() {
         });
 
         let parts = [];
-        parts.push(`It's ${hour} o'clock Central. Currently monitoring conditions across North Alabama and southern Tennessee.`);
+        parts.push(`It's ${hour} o'clock Central.`);
+        
+        // Add current conditions if available
+        if (forecast && forecast.periods && forecast.periods[0]) {
+            const current = forecast.periods[0];
+            parts.push(`Current conditions in Athens: ${current.temperature} degrees and ${current.shortForecast.toLowerCase()}.`);
+        }
+        
+        parts.push(`Monitoring weather across North Alabama and southern Tennessee.`);
 
         if (!alerts.length) {
-            parts.push('All clear at this time. No weather alerts in effect across the monitoring area.');
+            parts.push('No weather alerts in effect at this time.');
         } else {
             const warnings = alerts.filter(a => {
                 const p = a.properties || {};
@@ -1007,7 +1056,7 @@ async function runTopOfHourUpdate() {
     }
 }
 
-// :15 - Quarter Past: Brief Weather Summary
+// :15 - Quarter Past: Brief Weather Summary + Short Forecast
 async function runQuarterPastUpdate() {
     try {
         if (!speechEnabled) {
@@ -1016,7 +1065,7 @@ async function runQuarterPastUpdate() {
         }
 
         const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
-        const now = new Date();
+        const forecast = await fetchForecastData();
 
         let parts = [];
         parts.push('Quarter past the hour.');
@@ -1032,7 +1081,13 @@ async function runQuarterPastUpdate() {
         } else if (alerts.length > 0) {
             parts.push('Weather conditions remain quiet with no active warnings across North Alabama and southern Tennessee.');
         } else {
-            parts.push('Conditions remain calm across North Alabama and southern Tennessee. All clear at this time.');
+            parts.push('Conditions remain calm across North Alabama and southern Tennessee.');
+        }
+        
+        // Add short forecast if available
+        if (forecast && forecast.periods && forecast.periods.length > 1) {
+            const upcoming = forecast.periods[1]; // Next period
+            parts.push(`${upcoming.name}: ${upcoming.shortForecast.toLowerCase()}, high near ${upcoming.temperature}.`);
         }
 
         const text = parts.join(' ');
@@ -1049,7 +1104,7 @@ async function runHalfPastUpdate() {
     await runLocalNorthAlabamaBroadcast();
 }
 
-// :45 - Quarter Till: Alert Check + Brief Outlook
+// :45 - Quarter Till: Alert Check + Extended Outlook
 async function runQuarterTillUpdate() {
     try {
         if (!speechEnabled) {
@@ -1058,6 +1113,8 @@ async function runQuarterTillUpdate() {
         }
 
         const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const forecast = await fetchForecastData();
+        
         const now = new Date();
         const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
         const nextHourString = nextHour.toLocaleTimeString('en-US', {
@@ -1100,10 +1157,26 @@ async function runQuarterTillUpdate() {
             parts.push(`Monitoring through the ${nextHourString} o'clock hour.`);
         } else if (watches.length > 0) {
             parts.push(`Watch conditions persist. No warnings currently, but staying vigilant through ${nextHourString}.`);
-        } else if (alerts.length > 0) {
-            parts.push(`No warnings at this time. Expect generally quiet conditions heading into the ${nextHourString} o'clock hour.`);
         } else {
-            parts.push(`All clear. Expect calm conditions continuing into the ${nextHourString} o'clock hour.`);
+            parts.push(`No warnings at this time.`);
+            
+            // Add extended forecast outlook if available
+            if (forecast && forecast.periods && forecast.periods.length > 2) {
+                const tonight = forecast.periods.find(p => 
+                    p.name.toLowerCase().includes('tonight') || 
+                    p.name.toLowerCase().includes('night')
+                );
+                const tomorrow = forecast.periods.find(p => 
+                    p.name.toLowerCase().includes('tomorrow') || 
+                    (p.isDaytime && p.name.toLowerCase().includes('day'))
+                );
+                
+                if (tonight) {
+                    parts.push(`${tonight.name}: ${tonight.shortForecast.toLowerCase()}, low around ${tonight.temperature}.`);
+                } else if (tomorrow) {
+                    parts.push(`${tomorrow.name}: ${tomorrow.shortForecast.toLowerCase()}, high near ${tomorrow.temperature}.`);
+                }
+            }
         }
 
         const text = parts.join(' ');
