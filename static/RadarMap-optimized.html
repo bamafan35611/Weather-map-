@@ -994,9 +994,110 @@ async function fetchForecastData() {
     }
 }
 
+// === CHATTY PERSONALITY HELPERS ===
+
+function getTimeOfDayGreeting() {
+    const now = new Date();
+    const hour = now.getHours();
+    
+    if (hour >= 6 && hour < 12) return "Good morning";
+    if (hour >= 12 && hour < 17) return "Good afternoon";
+    if (hour >= 17 && hour < 22) return "Good evening";
+    return "Good night";
+}
+
+function getDayContext() {
+    const now = new Date();
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = dayNames[now.getDay()];
+    const hour = now.getHours();
+    
+    // Weekend references
+    if (dayName === 'Friday' && hour >= 15) return "Happy Friday afternoon";
+    if (dayName === 'Friday') return "Happy Friday";
+    if (dayName === 'Saturday') return "Happy Saturday";
+    if (dayName === 'Sunday' && hour < 18) return "Happy Sunday";
+    if (dayName === 'Sunday') return "Sunday evening";
+    
+    // Weekday references
+    if (dayName === 'Monday') return "Starting the week off";
+    if (dayName === 'Wednesday') return "Middle of the week";
+    if (dayName === 'Thursday') return "Almost to the weekend";
+    
+    return `This ${dayName}`;
+}
+
+function getWeatherCommentary(temp, conditions) {
+    const conditionsLower = conditions.toLowerCase();
+    
+    // Temperature-based comments
+    if (temp >= 85) {
+        return "Hot one out there";
+    } else if (temp >= 75 && temp < 85) {
+        if (conditionsLower.includes('sunny') || conditionsLower.includes('clear')) {
+            return "Beautiful weather";
+        }
+        return "Nice conditions";
+    } else if (temp >= 65 && temp < 75) {
+        return "Perfect weather";
+    } else if (temp >= 50 && temp < 65) {
+        return "Pleasant out there";
+    } else if (temp >= 35 && temp < 50) {
+        return "Bit chilly";
+    } else {
+        return "Cold one out there";
+    }
+}
+
+function getConditionsDescription(conditions) {
+    const lower = conditions.toLowerCase();
+    
+    if (lower.includes('sunny') && lower.includes('clear')) {
+        return "with beautiful sunshine";
+    } else if (lower.includes('sunny')) {
+        return "with plenty of sunshine";
+    } else if (lower.includes('clear')) {
+        return "with clear skies";
+    } else if (lower.includes('partly cloudy') || lower.includes('partly sunny')) {
+        return "with some clouds mixing in";
+    } else if (lower.includes('mostly cloudy')) {
+        return "with clouds rolling through";
+    } else if (lower.includes('cloudy') || lower.includes('overcast')) {
+        return "under cloudy skies";
+    } else if (lower.includes('rain') && lower.includes('thunder')) {
+        return "with thunderstorms in the area";
+    } else if (lower.includes('rain') || lower.includes('showers')) {
+        return "with rain in the forecast";
+    } else if (lower.includes('snow')) {
+        return "with snow in the forecast";
+    } else {
+        return `and ${conditions.toLowerCase()}`;
+    }
+}
+
+function getPracticalAdvice(temp, conditions) {
+    const conditionsLower = conditions.toLowerCase();
+    
+    if (temp >= 90) {
+        return "Stay hydrated out there!";
+    } else if (temp <= 35) {
+        return "Bundle up if you're heading out!";
+    } else if (temp <= 50) {
+        return "Grab a jacket if you're heading out!";
+    } else if (conditionsLower.includes('rain')) {
+        return "Don't forget your umbrella!";
+    } else if (conditionsLower.includes('clear') && temp >= 60 && temp <= 75) {
+        return "Great day to be outside!";
+    } else if (conditionsLower.includes('sunny')) {
+        return "Enjoy the sunshine!";
+    }
+    
+    return "";
+}
+
 // === ROTATING 15-MINUTE BROADCAST SYSTEM ===
 
-// :00 - Top of Hour: Alert Status Update + Current Conditions
+// :00 - Top of Hour: Alert Status Update + Current Conditions (CHATTY VERSION)
 async function runTopOfHourUpdate() {
     try {
         if (!speechEnabled) {
@@ -1014,18 +1115,28 @@ async function runTopOfHourUpdate() {
         });
 
         let parts = [];
-        parts.push(`It's ${hour} o'clock Central.`);
         
-        // Add current conditions if available
+        // Chatty greeting with day context
+        const greeting = getTimeOfDayGreeting();
+        const dayContext = getDayContext();
+        parts.push(`${greeting}! It's ${hour} o'clock on ${dayContext}.`);
+        
+        // Add current conditions with personality
         if (forecast && forecast.periods && forecast.periods[0]) {
             const current = forecast.periods[0];
-            parts.push(`Current conditions in Athens: ${current.temperature} degrees and ${current.shortForecast.toLowerCase()}.`);
+            const commentary = getWeatherCommentary(current.temperature, current.shortForecast);
+            const description = getConditionsDescription(current.shortForecast);
+            const advice = getPracticalAdvice(current.temperature, current.shortForecast);
+            
+            parts.push(`${commentary}! Right now in Athens, we're sitting at ${current.temperature} degrees ${description}.`);
+            if (advice) {
+                parts.push(advice);
+            }
         }
-        
-        parts.push(`Monitoring weather across North Alabama and southern Tennessee.`);
 
+        // Alert status with conversational tone
         if (!alerts.length) {
-            parts.push('No weather alerts in effect at this time.');
+            parts.push("Weather's staying quiet across North Alabama and southern Tennessee. No alerts in effect.");
         } else {
             const warnings = alerts.filter(a => {
                 const p = a.properties || {};
@@ -1040,11 +1151,11 @@ async function runTopOfHourUpdate() {
             });
 
             if (warnings.length > 0) {
-                parts.push(`Currently tracking ${warnings.length} active warning${warnings.length > 1 ? 's' : ''} affecting the region.`);
+                parts.push(`We're tracking some active weather across the region. Currently monitoring ${warnings.length} warning${warnings.length > 1 ? 's' : ''} affecting parts of our coverage area.`);
             } else if (watches.length > 0) {
-                parts.push(`${watches.length} watch${watches.length > 1 ? 'es are' : ' is'} in effect. Monitoring conditions closely.`);
+                parts.push(`Keeping an eye on things. We've got ${watches.length} watch${watches.length > 1 ? 'es' : ''} in effect. Conditions are being monitored closely.`);
             } else {
-                parts.push('Weather advisories are present but no warnings at this time.');
+                parts.push('Some weather advisories are posted, but nothing serious at this time.');
             }
         }
 
@@ -1056,7 +1167,7 @@ async function runTopOfHourUpdate() {
     }
 }
 
-// :15 - Quarter Past: Brief Weather Summary + Short Forecast
+// :15 - Quarter Past: Brief Weather Summary + Short Forecast (CHATTY VERSION)
 async function runQuarterPastUpdate() {
     try {
         if (!speechEnabled) {
@@ -1068,7 +1179,7 @@ async function runQuarterPastUpdate() {
         const forecast = await fetchForecastData();
 
         let parts = [];
-        parts.push('Quarter past the hour.');
+        parts.push('Quarter past the hour. Quick check on conditions.');
 
         const warnings = alerts.filter(a => {
             const p = a.properties || {};
@@ -1077,17 +1188,17 @@ async function runQuarterPastUpdate() {
         });
 
         if (warnings.length > 0) {
-            parts.push(`Weather conditions remain active across the monitoring area with ${warnings.length} warning${warnings.length > 1 ? 's' : ''} ongoing.`);
+            parts.push(`Weather's still active out there with ${warnings.length} warning${warnings.length > 1 ? 's' : ''} ongoing across the area.`);
         } else if (alerts.length > 0) {
-            parts.push('Weather conditions remain quiet with no active warnings across North Alabama and southern Tennessee.');
+            parts.push("Conditions are holding steady. No active warnings, just keeping an eye on things.");
         } else {
-            parts.push('Conditions remain calm across North Alabama and southern Tennessee.');
+            parts.push('Everything looking calm across North Alabama and southern Tennessee.');
         }
         
-        // Add short forecast if available
+        // Add short forecast with conversational tone
         if (forecast && forecast.periods && forecast.periods.length > 1) {
             const upcoming = forecast.periods[1]; // Next period
-            parts.push(`${upcoming.name}: ${upcoming.shortForecast.toLowerCase()}, high near ${upcoming.temperature}.`);
+            parts.push(`Looking ahead to ${upcoming.name.toLowerCase()}: ${upcoming.shortForecast.toLowerCase()}, ${upcoming.isDaytime ? 'high' : 'low'} near ${upcoming.temperature}.`);
         }
 
         const text = parts.join(' ');
@@ -1104,7 +1215,7 @@ async function runHalfPastUpdate() {
     await runLocalNorthAlabamaBroadcast();
 }
 
-// :45 - Quarter Till: Alert Check + Extended Outlook
+// :45 - Quarter Till: Alert Check + Extended Outlook (CHATTY VERSION)
 async function runQuarterTillUpdate() {
     try {
         if (!speechEnabled) {
@@ -1123,7 +1234,7 @@ async function runQuarterTillUpdate() {
         });
 
         let parts = [];
-        parts.push('Quarter till the hour. Checking the radar across North Alabama and southern Tennessee.');
+        parts.push('Quarter till the hour. Let\'s take a look at what\'s happening across North Alabama and southern Tennessee.');
 
         const warnings = alerts.filter(a => {
             const p = a.properties || {};
@@ -1147,20 +1258,20 @@ async function runQuarterTillUpdate() {
             ).length;
 
             if (tornadoWarnings > 0) {
-                parts.push(`${tornadoWarnings} tornado warning${tornadoWarnings > 1 ? 's' : ''} remain${tornadoWarnings === 1 ? 's' : ''} in effect.`);
+                parts.push(`We're still tracking ${tornadoWarnings} tornado warning${tornadoWarnings > 1 ? 's' : ''} across the region. Stay weather aware!`);
             } else if (severeWarnings > 0) {
-                parts.push(`${severeWarnings} severe thunderstorm warning${severeWarnings > 1 ? 's' : ''} continue${severeWarnings === 1 ? 's' : ''} across the area.`);
+                parts.push(`${severeWarnings} severe thunderstorm warning${severeWarnings > 1 ? 's are' : ' is'} still active. We'll keep you posted.`);
             } else {
-                parts.push(`Active warnings continue. Stay weather aware.`);
+                parts.push(`Active weather continues. We're staying on top of it.`);
             }
             
-            parts.push(`Monitoring through the ${nextHourString} o'clock hour.`);
+            parts.push(`We'll continue monitoring through the ${nextHourString} o'clock hour.`);
         } else if (watches.length > 0) {
-            parts.push(`Watch conditions persist. No warnings currently, but staying vigilant through ${nextHourString}.`);
+            parts.push(`Watch conditions are still in place. No warnings right now, but we're keeping a close eye on things heading into ${nextHourString}.`);
         } else {
-            parts.push(`No warnings at this time.`);
+            parts.push(`Radar's looking quiet right now.`);
             
-            // Add extended forecast outlook if available
+            // Add extended forecast outlook with conversational tone
             if (forecast && forecast.periods && forecast.periods.length > 2) {
                 const tonight = forecast.periods.find(p => 
                     p.name.toLowerCase().includes('tonight') || 
@@ -1172,9 +1283,10 @@ async function runQuarterTillUpdate() {
                 );
                 
                 if (tonight) {
-                    parts.push(`${tonight.name}: ${tonight.shortForecast.toLowerCase()}, low around ${tonight.temperature}.`);
+                    const conditionsComment = getConditionsDescription(tonight.shortForecast);
+                    parts.push(`For ${tonight.name.toLowerCase()}: ${tonight.shortForecast.toLowerCase()}, low around ${tonight.temperature}. ${tonight.shortForecast.toLowerCase().includes('clear') ? 'Nice evening ahead!' : ''}`);
                 } else if (tomorrow) {
-                    parts.push(`${tomorrow.name}: ${tomorrow.shortForecast.toLowerCase()}, high near ${tomorrow.temperature}.`);
+                    parts.push(`Looking ahead to ${tomorrow.name.toLowerCase()}: ${tomorrow.shortForecast.toLowerCase()}, high near ${tomorrow.temperature}.`);
                 }
             }
         }
