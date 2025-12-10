@@ -280,8 +280,8 @@ const BACKEND_BASE_URL = (__api_qp.get('api')) ||
     : 'https://weather-map-zfln.onrender.com'); // Not on Render - use full Render URL
 
 // Home position (North Alabama / Southern Tennessee region)
-const HOME_CENTER = [-86.5, 34.8];  // Centered between Athens, AL and your TN counties
-const HOME_ZOOM = 7.5;  // Zoomed in to show your monitoring area clearly
+const HOME_CENTER = [-86.8, 34.8];  // Centered on Limestone (Athens) and Madison (Huntsville) counties
+const HOME_ZOOM = 8.1;  // Zoomed in to show your monitoring area clearly
 
 let map;
 let speechEnabled = true;
@@ -1503,8 +1503,8 @@ mapboxgl.accessToken = __mb_token;
     map = new mapboxgl.Map({
         container: 'map',
         style: 'mapbox://styles/mapbox/dark-v10',
-        center: [-96.5, 38.5],
-        zoom: 4.2,
+        center: HOME_CENTER,  // North Alabama / Southern Tennessee
+        zoom: HOME_ZOOM,      // Zoomed into regional monitoring area
         projection: 'mercator'
     });
     
