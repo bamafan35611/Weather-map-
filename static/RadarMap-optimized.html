@@ -749,132 +749,6 @@ function scheduleInitialWarningZoom() {
     }, 15000);
 }
 
-function scheduleTopOfHourUpdates() {
-    if (hourlyBroadcastScheduled) return;
-    hourlyBroadcastScheduled = true;
-
-    const now = new Date();
-    const msToNextHour =
-        ((60 - now.getMinutes()) * 60 - now.getSeconds()) * 1000
-        - now.getMilliseconds();
-
-    const delay = Math.max(msToNextHour, 10000);
-
-    console.log(`[Hourly] First hourly national broadcast in ~${Math.round(delay / 1000)} seconds`);
-
-    setTimeout(() => {
-        runHourlyWeatherBroadcast();
-        setInterval(runHourlyWeatherBroadcast, 60 * 60 * 1000); // every hour
-    }, delay);
-}
-
-function scheduleLocalNorthAlabamaUpdates() {
-    if (localBroadcastScheduled) return;
-    localBroadcastScheduled = true;
-
-    const now = new Date();
-    // Time until next :30 past the hour
-    let minutes = now.getMinutes();
-    let seconds = now.getSeconds();
-    let ms;
-
-    if (minutes < 30) {
-        ms = ((30 - minutes) * 60 - seconds) * 1000 - now.getMilliseconds();
-    } else {
-        ms = ((60 - minutes + 30) * 60 - seconds) * 1000 - now.getMilliseconds();
-    }
-
-    const delay = Math.max(ms, 15000);
-
-    console.log(`[Local] First North Alabama broadcast in ~${Math.round(delay / 1000)} seconds`);
-
-    setTimeout(() => {
-        runLocalNorthAlabamaBroadcast();
-        setInterval(runLocalNorthAlabamaBroadcast, 60 * 60 * 1000); // every hour at :30
-    }, delay);
-}
-
-async function runHourlyWeatherBroadcast() {
-    try {
-        if (!speechEnabled) {
-            console.log('[Hourly] Speech disabled - skipping hourly broadcast');
-            return;
-        }
-
-        if (typeof _alertProcessingInProgress !== 'undefined' && _alertProcessingInProgress) {
-            console.log('[Hourly] Alert processing in progress - skipping this hour');
-            return;
-        }
-
-        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
-        const now = new Date();
-        const timeString = now.toLocaleTimeString('en-US', {
-            timeZone: 'America/Chicago',
-            hour: 'numeric',
-            minute: '2-digit'
-        });
-
-        let parts = [];
-        parts.push(`It's ${timeString} Central. Here's a nationwide weather update.`);
-
-        if (!alerts.length) {
-            parts.push('Radar is quiet across most of the country right now. No major weather warnings are in effect.');
-        } else {
-            const warnings = alerts.filter(a => isActiveWarning(a));
-
-            if (!warnings.length) {
-                parts.push('Radar is relatively quiet. There are no major warning products in effect at this time.');
-            } else {
-                const countBy = (keyword) =>
-                    warnings.filter(a =>
-                        ((a.properties?.event || '').toLowerCase().includes(keyword))
-                    ).length;
-
-                const tornadoWarn = countBy('tornado warning');
-                const severeWarn = countBy('severe thunderstorm warning');
-                const flashFloodWarn = countBy('flash flood warning');
-                const floodWarn = countBy('flood warning');
-                const winterWarn = countBy('winter storm warning');
-                const highWindWarn = countBy('high wind warning');
-
-                let headlinePieces = [];
-
-                if (tornadoWarn > 0) {
-                    headlinePieces.push(`${tornadoWarn} tornado warning${tornadoWarn > 1 ? 's' : ''}`);
-                }
-                if (severeWarn > 0) {
-                    headlinePieces.push(`${severeWarn} severe thunderstorm warning${severeWarn > 1 ? 's' : ''}`);
-                }
-                if (flashFloodWarn > 0) {
-                    headlinePieces.push(`${flashFloodWarn} flash flood warning${flashFloodWarn > 1 ? 's' : ''}`);
-                }
-                if (floodWarn > 0 && flashFloodWarn === 0) {
-                    headlinePieces.push(`${floodWarn} flood warning${floodWarn > 1 ? 's' : ''}`);
-                }
-                if (winterWarn > 0) {
-                    headlinePieces.push(`${winterWarn} winter storm warning${winterWarn > 1 ? 's' : ''}`);
-                }
-                if (highWindWarn > 0) {
-                    headlinePieces.push(`${highWindWarn} high wind warning${highWindWarn > 1 ? 's' : ''}`);
-                }
-
-                if (headlinePieces.length) {
-                    const list = headlinePieces.join(', ').replace(/, ([^,]*)$/, ' and $1');
-                    parts.push(`There are currently ${list} in effect across parts of the country.`);
-                } else {
-                    parts.push('Radar is active but there are no major warning products in effect at this time.');
-                }
-            }
-        }
-
-        const text = parts.join(' ');
-        console.log('[Hourly] Speaking hourly national update:', text);
-        await speakText(text, 'hourly-broadcast');
-    } catch (err) {
-        console.error('[Hourly] Error during hourly broadcast:', err);
-    }
-}
-
 
             const isActiveWarning = (a) => {
                 const p = a.properties || {};
@@ -1078,6 +952,165 @@ async function runLocalNorthAlabamaBroadcast() {
         await speakText(textOut, 'local-north-alabama');
     } catch (err) {
         console.error('[Local] Error during North Alabama broadcast:', err);
+    }
+}
+
+// === ROTATING 15-MINUTE BROADCAST SYSTEM ===
+
+// :00 - Top of Hour: Alert Status Update
+async function runTopOfHourUpdate() {
+    try {
+        if (!speechEnabled) {
+            console.log('[15min] Speech disabled - skipping :00 update');
+            return;
+        }
+
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const now = new Date();
+        const hour = now.toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric'
+        });
+
+        let parts = [];
+        parts.push(`It's ${hour} o'clock Central. Currently monitoring conditions across North Alabama and southern Tennessee.`);
+
+        if (!alerts.length) {
+            parts.push('All clear at this time. No weather alerts in effect across the monitoring area.');
+        } else {
+            const warnings = alerts.filter(a => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+                return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
+            });
+
+            const watches = alerts.filter(a => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+                return ev.includes('watch') && (p.status === 'Actual' || p.status === 'actual');
+            });
+
+            if (warnings.length > 0) {
+                parts.push(`Currently tracking ${warnings.length} active warning${warnings.length > 1 ? 's' : ''} affecting the region.`);
+            } else if (watches.length > 0) {
+                parts.push(`${watches.length} watch${watches.length > 1 ? 'es are' : ' is'} in effect. Monitoring conditions closely.`);
+            } else {
+                parts.push('Weather advisories are present but no warnings at this time.');
+            }
+        }
+
+        const text = parts.join(' ');
+        console.log('[15min :00] Speaking top of hour update:', text);
+        await speakText(text, '15min-00');
+    } catch (err) {
+        console.error('[15min :00] Error:', err);
+    }
+}
+
+// :15 - Quarter Past: Brief Weather Summary
+async function runQuarterPastUpdate() {
+    try {
+        if (!speechEnabled) {
+            console.log('[15min] Speech disabled - skipping :15 update');
+            return;
+        }
+
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const now = new Date();
+
+        let parts = [];
+        parts.push('Quarter past the hour.');
+
+        const warnings = alerts.filter(a => {
+            const p = a.properties || {};
+            const ev = (p.event || '').toLowerCase();
+            return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
+        });
+
+        if (warnings.length > 0) {
+            parts.push(`Weather conditions remain active across the monitoring area with ${warnings.length} warning${warnings.length > 1 ? 's' : ''} ongoing.`);
+        } else if (alerts.length > 0) {
+            parts.push('Weather conditions remain quiet with no active warnings across North Alabama and southern Tennessee.');
+        } else {
+            parts.push('Conditions remain calm across North Alabama and southern Tennessee. All clear at this time.');
+        }
+
+        const text = parts.join(' ');
+        console.log('[15min :15] Speaking quarter past update:', text);
+        await speakText(text, '15min-15');
+    } catch (err) {
+        console.error('[15min :15] Error:', err);
+    }
+}
+
+// :30 - Half Past: Detailed Regional Update (calls existing function)
+async function runHalfPastUpdate() {
+    console.log('[15min :30] Triggering detailed regional update');
+    await runLocalNorthAlabamaBroadcast();
+}
+
+// :45 - Quarter Till: Alert Check + Brief Outlook
+async function runQuarterTillUpdate() {
+    try {
+        if (!speechEnabled) {
+            console.log('[15min] Speech disabled - skipping :45 update');
+            return;
+        }
+
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const now = new Date();
+        const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
+        const nextHourString = nextHour.toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric'
+        });
+
+        let parts = [];
+        parts.push('Quarter till the hour. Checking the radar across North Alabama and southern Tennessee.');
+
+        const warnings = alerts.filter(a => {
+            const p = a.properties || {};
+            const ev = (p.event || '').toLowerCase();
+            return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
+        });
+
+        const watches = alerts.filter(a => {
+            const p = a.properties || {};
+            const ev = (p.event || '').toLowerCase();
+            return ev.includes('watch') && (p.status === 'Actual' || p.status === 'actual');
+        });
+
+        if (warnings.length > 0) {
+            const tornadoWarnings = warnings.filter(a => 
+                (a.properties?.event || '').toLowerCase().includes('tornado')
+            ).length;
+            
+            const severeWarnings = warnings.filter(a => 
+                (a.properties?.event || '').toLowerCase().includes('severe thunderstorm')
+            ).length;
+
+            if (tornadoWarnings > 0) {
+                parts.push(`${tornadoWarnings} tornado warning${tornadoWarnings > 1 ? 's' : ''} remain${tornadoWarnings === 1 ? 's' : ''} in effect.`);
+            } else if (severeWarnings > 0) {
+                parts.push(`${severeWarnings} severe thunderstorm warning${severeWarnings > 1 ? 's' : ''} continue${severeWarnings === 1 ? 's' : ''} across the area.`);
+            } else {
+                parts.push(`Active warnings continue. Stay weather aware.`);
+            }
+            
+            parts.push(`Monitoring through the ${nextHourString} o'clock hour.`);
+        } else if (watches.length > 0) {
+            parts.push(`Watch conditions persist. No warnings currently, but staying vigilant through ${nextHourString}.`);
+        } else if (alerts.length > 0) {
+            parts.push(`No warnings at this time. Expect generally quiet conditions heading into the ${nextHourString} o'clock hour.`);
+        } else {
+            parts.push(`All clear. Expect calm conditions continuing into the ${nextHourString} o'clock hour.`);
+        }
+
+        const text = parts.join(' ');
+        console.log('[15min :45] Speaking quarter till update:', text);
+        await speakText(text, '15min-45');
+    } catch (err) {
+        console.error('[15min :45] Error:', err);
     }
 }
 
@@ -1519,10 +1552,8 @@ mapboxgl.accessToken = __mb_token;
         
         // Schedule a one-time zoom into existing warnings 15s after map load
         scheduleInitialWarningZoom();
-        // Schedule top-of-the-hour national weather updates
-        scheduleTopOfHourUpdates();
-        // Schedule :30 North Alabama local weather updates
-        scheduleLocalNorthAlabamaUpdates();
+        // Rotating 15-minute broadcasts now handled by checkForBriefing() in the main timer loop
+        console.log("[15min] Rotating broadcast system active - updates at :00, :15, :30, :45");
         
         console.log("Enhanced weather system ready!");
     });
@@ -2477,15 +2508,19 @@ function checkForBriefing() {
         
         if (timeSinceLastCheck > 60000) { // More than 1 minute since last check
             console.log(`[Briefing] ⏰ Briefing time detected (XX:${minute.toString().padStart(2, '0')})`);
-            startBriefing();
             
-            // Auto-end briefing after 3 minutes (adjust as needed)
-            setTimeout(() => {
-                if (_briefingInProgress) {
-                    console.log("[Briefing] ⏱️ Auto-ending briefing after timeout");
-                    endBriefing();
-                }
-            }, 180000); // 3 minutes
+            // Trigger appropriate broadcast based on minute
+            if (minute === 0) {
+                runTopOfHourUpdate();
+            } else if (minute === 15) {
+                runQuarterPastUpdate();
+            } else if (minute === 30) {
+                runHalfPastUpdate();
+            } else if (minute === 45) {
+                runQuarterTillUpdate();
+            }
+            
+            _lastBriefingCheck = currentTime;
         }
     }
 }
