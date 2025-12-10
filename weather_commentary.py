@@ -82,7 +82,7 @@ class WeatherCommentary:
         return clean_nws_text(text)
     
     def generate_national_briefing(self, alerts: List[Dict], scored_alerts: List[Dict]) -> str:
-        """Generate a comprehensive Tennessee Valley weather briefing"""
+        """Generate a comprehensive national weather briefing"""
         
         if not alerts:
             return self._clean_text(self._generate_quiet_weather_commentary())
@@ -94,7 +94,7 @@ class WeatherCommentary:
         
         # Alert count and overview
         total = len(alerts)
-        lines.append(f"Currently monitoring {total} active weather alerts across North Alabama and southern Middle Tennessee.")
+        lines.append(f"Currently monitoring {total} active weather alerts across the nation.")
         
         # Break down by severity
         severity_breakdown = self._analyze_severity(scored_alerts)
@@ -154,7 +154,7 @@ class WeatherCommentary:
         # Count tornado warnings
         tornado_count = sum(1 for a in alerts if 'tornado' in a.get('event', '').lower())
         if tornado_count > 0:
-            facts.append(f"We're currently tracking {tornado_count} tornado warning{'s' if tornado_count > 1 else ''} in our Tennessee Valley coverage area.")
+            facts.append(f"We're currently tracking {tornado_count} tornado warning{'s' if tornado_count > 1 else ''} nationwide.")
         
         # Find unusual weather
         unusual = self._find_unusual_weather(alerts)
@@ -170,7 +170,7 @@ class WeatherCommentary:
                     states.add(state)
         
         if len(states) >= 5:
-            facts.append(f"Active weather is affecting {len(states)} states from across our regional coverage area.")
+            facts.append(f"Active weather is affecting {len(states)} states from coast to coast.")
         
         return " ".join(facts) if facts else None
     
@@ -228,7 +228,7 @@ class WeatherCommentary:
         # Regional highlights
         regions_affected = self._count_regions_affected(alerts)
         if regions_affected >= 3:
-            lines.append(f"This is truly a across our regional coverage area weather event, with {regions_affected} regions experiencing active conditions.")
+            lines.append(f"This is truly a coast to coast weather event, with {regions_affected} regions experiencing active conditions.")
         
         # What's coming
         lines.append("We'll continue monitoring these systems and keep you updated.")
@@ -262,7 +262,7 @@ class WeatherCommentary:
             if severe_count > 0:
                 lines.append(f"{severe_count} of these are high severity warnings requiring immediate attention.")
         else:
-            lines.append("Quiet weather across North Alabama and southern Middle Tennessee at this hour.")
+            lines.append("Quiet weather across the country at this hour.")
         
         # Local check
         local_alerts = self._filter_by_location(alerts, local_area)
@@ -284,15 +284,15 @@ class WeatherCommentary:
         """Generate commentary when weather is quiet"""
         
         options = [
-            "Quiet weather across North Alabama and southern Middle Tennessee right now. No significant alerts to report. We're keeping an eye on conditions and will update you if anything develops.",
+            "Quiet weather across the nation right now. No significant alerts to report. We're keeping an eye on conditions and will update you if anything develops.",
             
             "All quiet on the weather front at this hour. The National Weather Service has no major alerts active. Enjoying the calm before the next weather system arrives.",
             
-            "Calm conditions in our Tennessee Valley coverage area. Our AI monitoring system is active but finding nothing to worry about. This is the kind of weather everyone can appreciate.",
+            "Calm conditions nationwide. Our AI monitoring system is active but finding nothing to worry about. This is the kind of weather everyone can appreciate.",
             
-            "Weather conditions are tranquil across North Alabama and southern Middle Tennessee. No watches or warnings in effect. We'll stay vigilant and keep you updated.",
+            "Weather conditions are tranquil across the country. No watches or warnings in effect. We'll stay vigilant and keep you updated.",
             
-            "Taking advantage of the quiet weather today. Our automated systems are monitoring our Tennessee Valley coverage area, ready to alert you the moment conditions change."
+            "Taking advantage of the quiet weather today. Our automated systems are monitoring all 50 states, ready to alert you the moment conditions change."
         ]
         
         return random.choice(options)
@@ -383,7 +383,7 @@ class WeatherCommentary:
         
         parts = [f"{count} {type_name.lower()}" for type_name, count in top_types]
         
-        return "We're dealing with " + ", ".join(parts) + " situations across North Alabama and southern Middle Tennessee."
+        return "We're dealing with " + ", ".join(parts) + " situations across the country."
     
     def _find_unusual_weather(self, alerts: List[Dict]) -> Optional[str]:
         """Find and describe unusual weather patterns"""
@@ -452,8 +452,8 @@ class WeatherCommentary:
         
         openings = [
             "Good day everyone, this is NorthBamaWX with your national weather intelligence update.",
-            "NorthBamaWX here with a look at active weather across North Alabama and southern Middle Tennessee.",
-            "Welcome to NorthBamaWX. Let's check on weather conditions in our Tennessee Valley coverage area.",
+            "NorthBamaWX here with a look at active weather across the nation.",
+            "Welcome to NorthBamaWX. Let's check on weather conditions nationwide.",
             "This is NorthBamaWX, your AI-powered weather intelligence system.",
         ]
         
@@ -474,7 +474,7 @@ class WeatherCommentary:
 
 # Helper functions for Flask integration
 def get_national_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
-    """Get Tennessee Valley weather briefing with environmental enhancements"""
+    """Get national weather briefing with environmental enhancements"""
     commentary = WeatherCommentary()
     base_briefing = commentary.generate_national_briefing(alerts, scored_alerts)
     
