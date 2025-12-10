@@ -178,6 +178,104 @@ def clean_weather_text(text: str) -> str:
     
     return text
 
+
+
+def extract_winter_details(alert: Dict, event: str) -> str:
+    """Extract extra winter weather details like timing, snow amounts, and travel impacts.
+
+    This reads the NWS description text to pull out:
+      • Timing phrases (late tonight, this evening, overnight, etc.)
+      • Snow and ice accumulation amounts
+      • Travel hazard wording (slick roads, bridges, visibility)
+    Only runs for winter-type events.
+    """
+    try:
+        desc = " ".join([
+            str(alert.get("description") or ""),
+            str(alert.get("instruction") or ""),
+            str(alert.get("headline") or ""),
+        ])
+        desc_lower = desc.lower()
+        event_lower = (event or "").lower()
+
+        winter_keywords = ["winter", "snow", "blizzard", "ice", "freezing", "sleet", "wintry"]
+        if not any(k in event_lower or k in desc_lower for k in winter_keywords):
+            return ""
+
+        parts = []
+
+        # --- Timing phrases ---
+        timing_patterns = [
+            r"late tonight",
+            r"this evening",
+            r"this afternoon",
+            r"this morning",
+            r"overnight",
+            r"after midnight",
+            r"before sunrise",
+            r"through [a-z]+day (morning|night|evening)",
+            r"through tonight",
+        ]
+        for pat in timing_patterns:
+            m = re.search(pat, desc_lower)
+            if m:
+                phrase = m.group(0)
+                phrase_clean = phrase.capitalize()
+                parts.append(f"The main impacts are expected {phrase_clean}.")
+                break
+
+        # --- Snow accumulation (inches) ---
+        range_match = re.search(r"(\d+)\s*(?:to|-|–)\s*(\d+)\s*(?:inches?|\")", desc_lower)
+        if range_match:
+            lo, hi = range_match.group(1), range_match.group(2)
+            parts.append(f"Snow amounts of {lo} to {hi} inches are possible.")
+        else:
+            up_to_match = re.search(r"up to\s+(\d+)\s*(?:inches?|\")", desc_lower)
+            if up_to_match:
+                val = up_to_match.group(1)
+                parts.append(f"Up to {val} inches of snow is possible.")
+
+        # Trace / flurries / light snow
+        if any(k in desc_lower for k in ["flurries", "light snow", "a dusting", "little or no accumulation"]):
+            if not any("snow amounts" in p.lower() or "inches of snow" in p.lower() for p in parts):
+                parts.append("Only light snow or flurries are expected with little accumulation.")
+
+        # --- Ice accumulation ---
+        ice_match = re.search(r"up to\s+([0-9\.]+)\s*(?:inch|inches|\")\s+of ice", desc_lower)
+        if ice_match:
+            amt = ice_match.group(1)
+            parts.append(f"Up to {amt} inches of ice accumulation is possible on exposed surfaces.")
+
+        # --- Travel hazards ---
+        hazard_keywords = [
+            "hazardous travel",
+            "dangerous travel",
+            "treacherous travel",
+            "roads may become slick",
+            "travel could be difficult",
+            "difficult travel",
+            "very slick",
+            "slick and hazardous",
+        ]
+        if any(k in desc_lower for k in hazard_keywords):
+            parts.append("Travel could become hazardous, especially on untreated roads, bridges, and overpasses.")
+        elif "bridge" in desc_lower or "overpass" in desc_lower:
+            parts.append("Bridges and overpasses may become slick and icy.")
+
+        # --- Visibility issues ---
+        if any(k in desc_lower for k in ["reduced visibility", "blowing snow", "whiteout", "near white out", "white-out"]):
+            parts.append("Blowing snow may reduce visibility at times.")
+
+        extra = " ".join(parts).strip()
+        if not extra:
+            return ""
+
+        return clean_weather_text(extra)
+    except Exception as e:
+        logger.warning("extract_winter_details failed: %s", e)
+        return ""
+
+
 class VoiceStyleManager:
     """Manages different voice styles based on threat levels"""
     
@@ -345,6 +443,10 @@ class VoiceStyleManager:
         announcement = attention + main + threat + action + details + "This is NorthBamaWX!"
         
         # 🆕 Clean up awkward phrasing
+        winter_details = extract_winter_details(alert, event)
+        if winter_details:
+            announcement = announcement + " " + winter_details
+
         return clean_weather_text(announcement)
     
     def _format_urgent_announcement(self, event: str, location: str, 
@@ -381,6 +483,10 @@ class VoiceStyleManager:
         announcement = opener + main + threat + level + action + "Stay safe."
         
         # 🆕 Clean up awkward phrasing
+        winter_details = extract_winter_details(alert, event)
+        if winter_details:
+            announcement = announcement + " " + winter_details
+
         return clean_weather_text(announcement)
     
     def _format_concerned_announcement(self, event: str, location: str, 
@@ -401,6 +507,10 @@ class VoiceStyleManager:
         announcement = opener + main + threat + level + action
         
         # 🆕 Clean up awkward phrasing
+        winter_details = extract_winter_details(alert, event)
+        if winter_details:
+            announcement = announcement + " " + winter_details
+
         return clean_weather_text(announcement)
     
     def _format_calm_announcement(self, event: str, location: str, 
@@ -415,6 +525,10 @@ class VoiceStyleManager:
         announcement = opener + main + threat + action
         
         # 🆕 Clean up awkward phrasing
+        winter_details = extract_winter_details(alert, event)
+        if winter_details:
+            announcement = announcement + " " + winter_details
+
         return clean_weather_text(announcement)
     
     def format_pre_alert_announcement(self, pre_alert: Dict) -> Dict:

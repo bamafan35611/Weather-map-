@@ -1014,6 +1014,10 @@ const EVENT_PRIORITY_RANKINGS = [
     { pattern: 'hurricane warning', score: 75 },
     { pattern: 'tsunami warning', score: 74 },
     { pattern: 'earthquake warning', score: 73 },
+    { pattern: 'blizzard warning', score: 73 },
+    { pattern: 'ice storm warning', score: 72 },
+    { pattern: 'winter storm warning', score: 71 },
+    { pattern: 'winter weather advisory', score: 65 },
     { pattern: 'flash flood watch', score: 60 },
     { pattern: 'severe thunderstorm watch', score: 59 },
     { pattern: 'tornado watch', score: 58 },
@@ -1183,11 +1187,24 @@ async function performPeriodicAlertCheck() {
             return;
         }
         
-        const warningsWithGeometry = activeWarnings.filter(alert => 
+        let warningsWithGeometry = activeWarnings.filter(alert => 
             alert.geometry && 
             alert.geometry.coordinates && 
             alert.geometry.coordinates.length > 0
         );
+        
+        // Prioritize winter hazards in the auto-zoom cycle
+        const winterKeywords = ["winter", "snow", "blizzard", "ice", "freezing", "sleet"];
+        warningsWithGeometry = warningsWithGeometry.sort((a, b) => {
+            const ea = (a.properties?.event || "").toLowerCase();
+            const eb = (b.properties?.event || "").toLowerCase();
+            const aWinter = winterKeywords.some(w => ea.includes(w));
+            const bWinter = winterKeywords.some(w => eb.includes(w));
+            if (aWinter && !bWinter) return -1;
+            if (!aWinter && bWinter) return 1;
+            return 0;
+        });
+
         
         console.log(`[15min Check] Warnings with geometry: ${warningsWithGeometry.length} of ${activeWarnings.length}`);
         
