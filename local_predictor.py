@@ -77,21 +77,29 @@ class LocalPredictor:
                 if state_code in EXCLUDED_TERRITORIES:
                     continue  # Skip this alert
                 
-                # Only process severe weather alerts
-                event = (props.get('event') or '').lower()
-                if any(keyword in event for keyword in ['tornado', 'severe', 'flood', 'wind', 'thunderstorm']):
-                    alert = {
-                        'id': props.get('id'),
-                        'event': props.get('event'),
-                        'severity': props.get('severity'),
-                        'urgency': props.get('urgency'),
-                        'areaDesc': props.get('areaDesc'),
-                        'onset': props.get('onset'),
-                        'expires': props.get('expires'),
-                        'description': props.get('description'),
-                        'geometry': geometry
-                    }
-                    alerts.append(alert)
+                # Process severe and high-impact alerts, including winter weather
+event = (props.get('event') or '').lower()
+
+severe_keywords = ['tornado', 'severe', 'flood', 'wind', 'thunderstorm']
+winter_keywords = ['winter', 'snow', 'blizzard', 'ice', 'freezing', 'sleet']
+
+if any(keyword in event for keyword in severe_keywords + winter_keywords):
+    alert = {
+        'id': props.get('id'),
+        'event': props.get('event'),
+        'severity': props.get('severity'),
+        'urgency': props.get('urgency'),
+        'areaDesc': props.get('areaDesc'),
+        'onset': props.get('onset'),
+        'expires': props.get('expires'),
+        'description': props.get('description'),
+        'geometry': geometry
+    }
+
+    # Debug so we know winter alerts are being passed downstream
+    print(f"❄️ Winter/Severe Alert Detected: {alert['event']} in {alert['areaDesc']}")
+
+    alerts.append(alert)
             
             return alerts
         except requests.exceptions.ProxyError:
