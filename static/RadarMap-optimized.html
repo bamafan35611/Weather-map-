@@ -278,8 +278,8 @@ const BACKEND_BASE_URL = (__api_qp.get('api')) ||
     : 'https://weather-map-zfln.onrender.com'); // Not on Render - use full Render URL
 
 // Home position (lower 48 view)
-const HOME_CENTER = [-96.5, 38.5];
-const HOME_ZOOM = 4.2;
+const HOME_CENTER = [-86.8, 34.8];
+const HOME_ZOOM = 7.2;
 
 let map;
 let speechEnabled = true;
@@ -902,10 +902,10 @@ async function runHourlyWeatherBroadcast() {
         });
 
         let parts = [];
-        parts.push(`It's ${timeString} Central. Here's a nationwide weather update.`);
+        parts.push(`It's ${timeString} Central. here's your Tennessee Valley weather update.`);
 
         if (!alerts.length) {
-            parts.push('Radar is quiet across most of the country right now. No major weather warnings are in effect.');
+            parts.push('Radar is quiet across North Alabama and southern Middle Tennessee right now. No major weather warnings are in effect.');
         } else {
             const warnings = alerts.filter(a => isActiveWarning(a));
 
@@ -947,7 +947,7 @@ async function runHourlyWeatherBroadcast() {
 
                 if (headlinePieces.length) {
                     const list = headlinePieces.join(', ').replace(/, ([^,]*)$/, ' and $1');
-                    parts.push(`There are currently ${list} in effect across parts of the country.`);
+                    parts.push(`There are currently ${list} in effect across parts of North Alabama and southern Middle Tennessee.`);
                 } else {
                     parts.push('Radar is active but there are no major warning products in effect at this time.');
                 }
