@@ -248,7 +248,7 @@ console.log('[DEBUG] Verbose logging enabled');
 const OBS_MODE = true;  // Change to false for normal mode
 
 // Polling intervals (in seconds)
-const ALERT_POLL_INTERVAL = OBS_MODE ? 30 : 15;      // OBS: 30s, Normal: 15s
+const ALERT_POLL_INTERVAL = 60;      // Check for new alerts every 60 seconds (1 minute) for real-time monitoring
 const RADAR_REFRESH_INTERVAL = OBS_MODE ? 300 : 120; // OBS: 5min, Normal: 2min
 const OUTLOOK_POLL_INTERVAL = 300;                    // 5 minutes (same for both)
 const WEATHER_UPDATE_INTERVAL = OBS_MODE ? 10 : 5;   // OBS: 10s, Normal: 5s
