@@ -262,9 +262,11 @@ let voiceRelayWS = null;
 let voiceRelayConnected = false;
 
 // === Alert Filtering Configuration ===
+// NOW MONITORING: North Alabama + Southern Tennessee counties ONLY
+// All alerts from monitored zones are automatically HIGH priority
 const MAX_ALERTS_PER_BATCH = 3;  // Maximum alerts to announce at once (prevents overload)
 const WARNINGS_ONLY = true;      // Only announce warnings (not watches/advisories)
-const HIGH_PRIORITY_ONLY = false; // Only announce HIGH priority alerts (your local area)
+const HIGH_PRIORITY_ONLY = false; // Not needed - all monitored alerts are HIGH priority
 
 
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm9ydGhiYW1hd3giLCJhIjoiY21mMXZ6aGdlMmhlMjJqcG9qMzQ2MXRmZyJ9.HnDHg4NTHSUVfgBvh4rXWw';
@@ -277,9 +279,9 @@ const BACKEND_BASE_URL = (__api_qp.get('api')) ||
     ? '' // On Render - use same origin
     : 'https://weather-map-zfln.onrender.com'); // Not on Render - use full Render URL
 
-// Home position (lower 48 view)
-const HOME_CENTER = [-96.5, 38.5];
-const HOME_ZOOM = 4.2;
+// Home position (North Alabama / Southern Tennessee region)
+const HOME_CENTER = [-86.5, 34.8];  // Centered between Athens, AL and your TN counties
+const HOME_ZOOM = 7.5;  // Zoomed in to show your monitoring area clearly
 
 let map;
 let speechEnabled = true;
@@ -583,19 +585,19 @@ async function panToRegion(regionName, regionData, durationMs = 5000) {
 }
 
 async function nationwideWeatherNarration() {
-    // CRITICAL: Don't start if alert processing is active OR if map is not at home position
+    // REGIONAL MONITORING ONLY - No nationwide tour
+    // This function now only summarizes conditions in the 14 monitored counties
+    
     if (_alertProcessingInProgress) {
-        console.log('[NATIONWIDE] Skipping - alert processing in progress');
+        console.log('[REGIONAL] Skipping - alert processing in progress');
         return;
     }
     
-    // Don't start if already running
     if (_nationwideNarrationInProgress) {
-        console.log('[NATIONWIDE] Skipping - narration already in progress');
+        console.log('[REGIONAL] Skipping - narration already in progress');
         return;
     }
     
-    // CRITICAL: Check if map is at home position before starting
     const currentZoom = map.getZoom();
     const currentCenter = map.getCenter();
     const isAtHome = Math.abs(currentZoom - HOME_ZOOM) < 0.5 && 
@@ -603,184 +605,95 @@ async function nationwideWeatherNarration() {
                      Math.abs(currentCenter.lat - HOME_CENTER[1]) < 5;
     
     if (!isAtHome) {
-        console.log('[NATIONWIDE] Skipping - map not at home position (likely processing alerts)');
+        console.log('[REGIONAL] Skipping - map not at home position (likely processing alerts)');
         return;
     }
     
-    console.log('[NATIONWIDE] Starting nationwide weather narration...');
+    console.log('[REGIONAL] Starting regional weather summary for monitored counties...');
     _nationwideNarrationInProgress = true;
     
     try {
-        // Organize alerts by region
-        const regionAlerts = {};
-        for (const regionName of Object.keys(US_REGIONS)) {
-            regionAlerts[regionName] = {
-                tornadoWarnings: 0,
-                severeThunderstormWarnings: 0,
-                flashFloodWarnings: 0,
-                tornadoWatches: 0,
-                severeThunderstormWatches: 0,
-                winterWarnings: 0,
-                otherWarnings: 0
-            };
-        }
+        // Count alerts in our monitored area only
+        let tornadoWarnings = 0;
+        let severeWarnings = 0;
+        let flashFloodWarnings = 0;
+        let tornadoWatches = 0;
+        let severeWatches = 0;
+        let winterWarnings = 0;
+        let otherWarnings = 0;
         
-        // Count alerts by region
         allActiveAlerts.forEach(alert => {
             const event = (alert.properties?.event || '').toLowerCase();
-            const areaDesc = alert.properties?.areaDesc || '';
-            
-            const stateAbbr = extractStateFromAreaDesc(areaDesc);
-            if (!stateAbbr) return;
-            
-            const region = getRegionForState(stateAbbr);
-            if (!region || !regionAlerts[region]) return;
             
             if (event.includes('tornado warning')) {
-                regionAlerts[region].tornadoWarnings++;
+                tornadoWarnings++;
             } else if (event.includes('severe thunderstorm warning')) {
-                regionAlerts[region].severeThunderstormWarnings++;
+                severeWarnings++;
             } else if (event.includes('flash flood warning')) {
-                regionAlerts[region].flashFloodWarnings++;
+                flashFloodWarnings++;
             } else if (event.includes('tornado watch')) {
-                regionAlerts[region].tornadoWatches++;
+                tornadoWatches++;
             } else if (event.includes('severe thunderstorm watch')) {
-                regionAlerts[region].severeThunderstormWatches++;
-            } else if (event.includes('winter') && event.includes('warning')) {
-                regionAlerts[region].winterWarnings++;
+                severeWatches++;
+            } else if (event.includes('winter') || event.includes('snow') || event.includes('ice')) {
+                winterWarnings++;
             } else if (event.includes('warning')) {
-                regionAlerts[region].otherWarnings++;
+                otherWarnings++;
             }
         });
         
-        // Build narration
-        let narration = "Checking conditions across the lower 48. ";
+        // Build narration for monitored area only
+        let narration = "Checking conditions across North Alabama and southern Tennessee. ";
         
-        // Count total warnings and watches
-        const totalTornadoWarnings = Object.values(regionAlerts).reduce((sum, r) => sum + r.tornadoWarnings, 0);
-        const totalSevereWarnings = Object.values(regionAlerts).reduce((sum, r) => sum + r.severeThunderstormWarnings, 0);
-        const totalFloodWarnings = Object.values(regionAlerts).reduce((sum, r) => sum + r.flashFloodWarnings, 0);
-        const totalWatches = Object.values(regionAlerts).reduce((sum, r) => sum + r.tornadoWatches + r.severeThunderstormWatches, 0);
+        const totalWarnings = tornadoWarnings + severeWarnings + flashFloodWarnings + winterWarnings + otherWarnings;
+        const totalWatches = tornadoWatches + severeWatches;
         
-        if (totalTornadoWarnings + totalSevereWarnings + totalFloodWarnings === 0) {
-            narration += "Conditions are quiet nationwide with no severe weather warnings at this hour. ";
+        if (totalWarnings === 0 && totalWatches === 0) {
+            narration += "Conditions are quiet across the monitoring area with no severe weather warnings or watches at this time. ";
         } else {
-            narration += `We're currently tracking severe weather in multiple areas. `;
+            if (totalWarnings > 0) {
+                narration += `We're currently tracking ${totalWarnings} warning${totalWarnings > 1 ? 's' : ''} across the region. `;
+                
+                if (tornadoWarnings > 0) {
+                    narration += `${tornadoWarnings} tornado warning${tornadoWarnings > 1 ? 's' : ''} in effect. `;
+                }
+                if (severeWarnings > 0) {
+                    narration += `${severeWarnings} severe thunderstorm warning${severeWarnings > 1 ? 's' : ''} active. `;
+                }
+                if (flashFloodWarnings > 0) {
+                    narration += `${flashFloodWarnings} flash flood warning${flashFloodWarnings > 1 ? 's' : ''} issued. `;
+                }
+                if (winterWarnings > 0) {
+                    narration += `${winterWarnings} winter weather warning${winterWarnings > 1 ? 's' : ''} posted. `;
+                }
+            }
             
-            if (totalTornadoWarnings > 0) {
-                narration += `${totalTornadoWarnings} tornado warning${totalTornadoWarnings > 1 ? 's' : ''} active. `;
-            }
-            if (totalSevereWarnings > 0) {
-                narration += `${totalSevereWarnings} severe thunderstorm warning${totalSevereWarnings > 1 ? 's' : ''} in effect. `;
-            }
-            if (totalFloodWarnings > 0) {
-                narration += `${totalFloodWarnings} flash flood warning${totalFloodWarnings > 1 ? 's' : ''} ongoing. `;
+            if (totalWatches > 0) {
+                narration += `${totalWatches} watch${totalWatches > 1 ? 'es are' : ' is'} in effect across our monitoring area. `;
             }
         }
-        
-        // Speak opening
-        if (speechEnabled) {
-            await speakText(narration, 'nationwide-intro');
-        }
-        
-        // Check for interruption
-        if (_alertProcessingInProgress) {
-            console.log('[NATIONWIDE] Interrupted by alert - stopping narration');
-            _nationwideNarrationInProgress = false;
-            return;
-        }
-        
-        // Pan through regions with activity
-        const regionsWithActivity = [];
-        for (const [regionName, counts] of Object.entries(regionAlerts)) {
-            const totalActivity = counts.tornadoWarnings + counts.severeThunderstormWarnings + 
-                                counts.flashFloodWarnings + counts.tornadoWatches + 
-                                counts.severeThunderstormWatches + counts.winterWarnings;
-            
-            if (totalActivity > 0) {
-                regionsWithActivity.push({ name: regionName, counts, total: totalActivity });
-            }
-        }
-        
-        // Sort by activity level (most severe first)
-        regionsWithActivity.sort((a, b) => b.total - a.total);
-        
-        // Visit top 3-5 most active regions
-        const regionsToVisit = regionsWithActivity.slice(0, 5);
-        
-        for (const region of regionsToVisit) {
-            // Check for interruption before each region
-            if (_alertProcessingInProgress) {
-                console.log('[NATIONWIDE] Interrupted by alert - stopping tour');
-                _nationwideNarrationInProgress = false;
-                await zoomToHome('Nationwide tour interrupted');
-                return;
-            }
-            
-            const regionData = US_REGIONS[region.name];
-            const counts = region.counts;
-            
-            // Pan to region
-            await panToRegion(region.name, regionData, 6000);
-            
-            // Build region-specific narration
-            let regionNarration = `${region.name}. `;
-            const warnings = [];
-            
-            if (counts.tornadoWarnings > 0) {
-                warnings.push(`${counts.tornadoWarnings} tornado warning${counts.tornadoWarnings > 1 ? 's' : ''}`);
-            }
-            if (counts.severeThunderstormWarnings > 0) {
-                warnings.push(`${counts.severeThunderstormWarnings} severe thunderstorm warning${counts.severeThunderstormWarnings > 1 ? 's' : ''}`);
-            }
-            if (counts.flashFloodWarnings > 0) {
-                warnings.push(`${counts.flashFloodWarnings} flash flood warning${counts.flashFloodWarnings > 1 ? 's' : ''}`);
-            }
-            if (counts.winterWarnings > 0) {
-                warnings.push(`${counts.winterWarnings} winter weather warning${counts.winterWarnings > 1 ? 's' : ''}`);
-            }
-            
-            if (warnings.length > 0) {
-                regionNarration += warnings.join(', ') + ' active. ';
-            }
-            
-            if (counts.tornadoWatches > 0 || counts.severeThunderstormWatches > 0) {
-                const watches = [];
-                if (counts.tornadoWatches > 0) watches.push(`${counts.tornadoWatches} tornado watch${counts.tornadoWatches > 1 ? 'es' : ''}`);
-                if (counts.severeThunderstormWatches > 0) watches.push(`${counts.severeThunderstormWatches} severe thunderstorm watch${counts.severeThunderstormWatches > 1 ? 'es' : ''}`);
-                regionNarration += watches.join(' and ') + ' in effect. ';
-            }
-            
-            // Speak region update
-            if (speechEnabled) {
-                await speakText(regionNarration, 'nationwide-region');
-            }
-        }
-        
-        // Return to lower 48 view
-        console.log('[NATIONWIDE] Returning to lower 48 view');
-        await zoomToHome('Nationwide narration complete');
         
         // Final summary
-        const closingNarration = `That's your nationwide weather update. We're monitoring ${totalTornadoWarnings + totalSevereWarnings + totalFloodWarnings} warnings and ${totalWatches} watches across the country.`;
+        const closingNarration = `Continuing to monitor weather conditions across North Alabama and southern Tennessee counties.`;
         
         if (speechEnabled) {
-            await speakText(closingNarration, 'nationwide-closing');
+            await speakText(narration + closingNarration, 'regional-summary');
         }
         
-        console.log('[NATIONWIDE] Narration complete');
+        console.log('[REGIONAL] Summary complete');
         
     } catch (error) {
-        console.error('[NATIONWIDE] Error during narration:', error);
+        console.error('[REGIONAL] Error during narration:', error);
     } finally {
         _nationwideNarrationInProgress = false;
         
-        // Make sure we're back at lower 48
+        // Make sure we're back at regional monitoring view
         if (!_alertProcessingInProgress) {
-            await zoomToHome('Nationwide narration cleanup');
+            await zoomToHome('Regional narration cleanup');
         }
     }
 }
+
 
 // Start nationwide narration every 12 minutes (to avoid conflict with 15-min alert check)
 // TEMPORARILY DISABLED FOR TESTING
@@ -1290,7 +1203,7 @@ async function performPeriodicAlertCheck() {
                 
                 // Only zoom back if user hasn't manually moved the map
                 if (!_userMovedMapDuringProcessing) {
-                    console.log(`[15min Check] Zooming BACK OUT to home position (lower 48)...`);
+                    console.log(`[15min Check] Zooming BACK OUT to home position (North Alabama/Southern Tennessee)...`);
                     console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
                     
                     const zoomSuccess = await zoomToHome('Periodic check complete');
@@ -2488,7 +2401,7 @@ setProcessingFlag(true, 'New alert processing start');
                 
                 // Only zoom back if user hasn't manually moved the map
                 if (!_userMovedMapDuringProcessing) {
-                    console.log("Zooming BACK OUT to home position (lower 48)...");
+                    console.log("Zooming BACK OUT to home position (North Alabama/Southern Tennessee)...");
                     console.log('[back] [Map] Returning to home view at', new Date().toLocaleTimeString());
                     
                     const zoomSuccess = await zoomToHome('New alert complete');
@@ -2606,41 +2519,52 @@ async function fetchAlerts() {
             console.warn("Backend API unavailable, using NWS only:", backendError.message);
         }
         
-        console.log("Fetching national alerts from NWS...");
-        const nationalResponse = await fetch('https://api.weather.gov/alerts/active', {
+        // === MONITORED AREA CONFIGURATION ===
+        // Only fetch alerts for these specific counties (North Alabama + Southern Tennessee)
+        const MONITORED_ZONES = [
+            // North Alabama counties
+            'ALC033', // Colbert County, AL
+            'ALC043', // Cullman County, AL
+            'ALC049', // DeKalb County, AL
+            'ALC059', // Franklin County, AL
+            'ALC071', // Jackson County, AL
+            'ALC079', // Lawrence County, AL
+            'ALC077', // Lauderdale County, AL
+            'ALC083', // Limestone County, AL (Athens)
+            'ALC089', // Madison County, AL (Huntsville)
+            'ALC095', // Marshall County, AL
+            'ALC103', // Morgan County, AL
+            // Southern Tennessee counties
+            'TNC051', // Franklin County, TN
+            'TNC103', // Lincoln County, TN
+            'TNC127'  // Moore County, TN
+        ];
+        
+        console.log(`Fetching alerts for ${MONITORED_ZONES.length} monitored counties only...`);
+        
+        // Fetch alerts only for our monitored zones
+        const zoneQuery = MONITORED_ZONES.map(zone => `zone=${zone}`).join('&');
+        const regionalResponse = await fetch(`https://api.weather.gov/alerts/active?${zoneQuery}`, {
             headers: {'Accept': 'application/geo+json'},
             timeout: 10000
         });
         
-        if (!nationalResponse.ok) {
-            throw new Error(`NWS API error: ${nationalResponse.status}`);
+        if (!regionalResponse.ok) {
+            throw new Error(`NWS API error: ${regionalResponse.status}`);
         }
         
-        const nationalData = await nationalResponse.json();
-        const nationalFeatures = (nationalData.features || []);
+        const regionalData = await regionalResponse.json();
+        const regionalFeatures = (regionalData.features || []);
         
-        console.log(`Retrieved ${nationalFeatures.length} national alerts`);
+        console.log(`Retrieved ${regionalFeatures.length} alerts for monitored area`);
         
-        const processedNationalAlerts = nationalFeatures.map(feature => {
+        const processedNationalAlerts = regionalFeatures.map(feature => {
             const alert = feature.properties;
             const areaDesc = (alert.areaDesc || '').toLowerCase();
             
-            let priority = 'LOW';
+            // All alerts from our monitored zones are HIGH priority
+            let priority = 'HIGH';
             let isWarning = alert.event.toLowerCase().includes('warning');
-            
-            const northAlabamaCounties = [
-                'colbert county', 'cullman county', 'dekalb county', 'franklin county',
-                'jackson county', 'lawrence county', 'lauderdale county', 'limestone county',
-                'madison county', 'marshall county', 'morgan county'
-            ];
-            
-            if (northAlabamaCounties.some(county => areaDesc.includes(county))) {
-                priority = 'HIGH';
-            } else if (areaDesc.includes('alabama')) {
-                priority = 'MEDIUM';
-            } else if (areaDesc.includes('tennessee') || areaDesc.includes('georgia')) {
-                priority = 'MEDIUM';
-            }
             
             return {
                 ...feature,
@@ -2650,13 +2574,13 @@ async function fetchAlerts() {
                     isWarning: isWarning,
                     color: getAlertColor(alert.event),
                     id: alert.id,
-                    source: 'nws_national'
+                    source: 'monitored_area'
                 }
             };
         });
         
         const localAlertIds = new Set(prioritizedAlerts.map(a => a.id));
-        const uniqueNationalAlerts = processedNationalAlerts.filter(a => !localAlertIds.has(a.properties.id));
+        const uniqueRegionalAlerts = processedNationalAlerts.filter(a => !localAlertIds.has(a.properties.id));
         
         const backendAlertsGeoJSON = prioritizedAlerts.map(alert => ({
             type: 'Feature',
@@ -2669,9 +2593,9 @@ async function fetchAlerts() {
             geometry: alert.geometry
         }));
         
-        const allAlerts = [...backendAlertsGeoJSON, ...uniqueNationalAlerts];
+        const allAlerts = [...backendAlertsGeoJSON, ...uniqueRegionalAlerts];
         
-        console.log(`Total alerts: ${allAlerts.length} (${prioritizedAlerts.length} backend priority, ${uniqueNationalAlerts.length} national)`);
+        console.log(`Total alerts: ${allAlerts.length} (${prioritizedAlerts.length} backend priority, ${uniqueRegionalAlerts.length} from monitored area)`);
         
         updateActiveWarnings(allAlerts);
         addAlertsToMap(allAlerts);
