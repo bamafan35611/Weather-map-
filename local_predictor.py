@@ -24,7 +24,7 @@ class LocalPredictor:
                 event = (props.get('event') or '').lower()
 
                 severe_keywords = ['tornado', 'severe', 'flood', 'wind', 'thunderstorm']
-                winter_keywords = ['winter', 'snow', 'blizzard', 'ice', 'freezing', 'sleet']
+                winter_keywords = ['winter', 'snow', 'blizzard', 'ice', 'freezing', 'sleet', 'cold']
 
                 if any(keyword in event for keyword in severe_keywords + winter_keywords):
                     alert = {
