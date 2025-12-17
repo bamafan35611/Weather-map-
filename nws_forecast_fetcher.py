@@ -206,6 +206,95 @@ class NWSForecastFetcher:
         
         return ". ".join(summaries) + "."
     
+    def get_current_observation(self, lat: float, lon: float) -> Optional[Dict]:
+        """
+        Get current weather observation data for a location
+        
+        Returns:
+            Dictionary with temperature, wind speed, etc. or None if error
+        """
+        try:
+            # Get the grid point first
+            points_url = f"{self.nws_api_base}/points/{lat:.4f},{lon:.4f}"
+            response = self.session.get(points_url, timeout=10)
+            
+            if response.status_code != 200:
+                return None
+            
+            points_data = response.json()
+            
+            # Get observation stations
+            stations_url = points_data['properties'].get('observationStations')
+            if not stations_url:
+                return None
+            
+            stations_response = self.session.get(stations_url, timeout=10)
+            if stations_response.status_code != 200:
+                return None
+            
+            stations = stations_response.json()
+            if not stations.get('features') or len(stations['features']) == 0:
+                return None
+            
+            # Get the nearest station
+            station_id = stations['features'][0]['properties']['stationIdentifier']
+            
+            # Get latest observation
+            obs_url = f"{self.nws_api_base}/stations/{station_id}/observations/latest"
+            obs_response = self.session.get(obs_url, timeout=10)
+            
+            if obs_response.status_code != 200:
+                return None
+            
+            obs_data = obs_response.json()
+            return obs_data.get('properties', {})
+            
+        except Exception as e:
+            print(f"⚠️ Error fetching observation for {lat},{lon}: {e}")
+            return None
+    
+    def get_athens_current_conditions(self) -> Optional[Dict]:
+        """Get current conditions for Athens, AL"""
+        obs = self.get_current_observation(
+            self.home_location['lat'],
+            self.home_location['lon']
+        )
+        
+        if not obs:
+            return None
+        
+        # Extract and convert the data we need
+        result = {}
+        
+        # Temperature
+        temp_c = obs.get('temperature', {}).get('value')
+        if temp_c is not None:
+            result['temperature'] = round((temp_c * 9/5) + 32)
+        
+        # Wind speed
+        wind_ms = obs.get('windSpeed', {}).get('value')
+        if wind_ms is not None:
+            result['wind_speed'] = round(wind_ms * 2.237)  # Convert m/s to mph
+        
+        # Wind gust
+        gust_ms = obs.get('windGust', {}).get('value')
+        if gust_ms is not None:
+            result['wind_gust'] = round(gust_ms * 2.237)
+        
+        # Wind direction
+        wind_dir = obs.get('windDirection', {}).get('value')
+        if wind_dir is not None:
+            result['wind_direction'] = self._degrees_to_cardinal(wind_dir)
+        
+        return result if result else None
+    
+    def _degrees_to_cardinal(self, degrees: float) -> str:
+        """Convert wind direction degrees to cardinal direction"""
+        directions = ['North', 'Northeast', 'East', 'Southeast', 
+                     'South', 'Southwest', 'West', 'Northwest']
+        index = round(degrees / 45) % 8
+        return directions[index]
+    
     def get_athens_forecast_specifically(self) -> str:
         """
         Get a broadcast-ready forecast specifically for Athens, AL
@@ -253,6 +342,52 @@ def get_athens_forecast() -> str:
     """
     fetcher = get_forecast_fetcher()
     return fetcher.get_athens_forecast_specifically()
+
+
+def get_athens_current_conditions() -> Optional[Dict]:
+    """
+    Get current temperature and wind conditions for Athens, AL
+    Returns dict with 'temperature', 'wind_speed', 'wind_gust', 'wind_direction'
+    """
+    fetcher = get_forecast_fetcher()
+    return fetcher.get_athens_current_conditions()
+
+
+def get_athens_briefing_with_conditions() -> str:
+    """
+    Get Athens forecast with current temperature and wind speed included
+    This is the complete briefing for Athens
+    """
+    fetcher = get_forecast_fetcher()
+    
+    # Get forecast
+    forecast_text = fetcher.get_athens_forecast_specifically()
+    
+    # Get current conditions
+    conditions = fetcher.get_athens_current_conditions()
+    
+    if not conditions:
+        # If we can't get current conditions, just return the forecast
+        return forecast_text
+    
+    # Build conditions text
+    conditions_parts = []
+    
+    if 'temperature' in conditions:
+        conditions_parts.append(f"Current temperature is {conditions['temperature']} degrees")
+    
+    if 'wind_speed' in conditions and conditions['wind_speed'] > 0:
+        wind_text = f"winds {conditions.get('wind_direction', '')} at {conditions['wind_speed']} miles per hour"
+        if 'wind_gust' in conditions and conditions['wind_gust'] > conditions['wind_speed'] + 5:
+            wind_text += f" gusting to {conditions['wind_gust']}"
+        conditions_parts.append(wind_text)
+    
+    if conditions_parts:
+        # Add current conditions before the forecast
+        conditions_text = ", ".join(conditions_parts) + ". "
+        return f"Athens, Alabama: {conditions_text}{forecast_text}"
+    
+    return forecast_text
 
 
 if __name__ == '__main__':

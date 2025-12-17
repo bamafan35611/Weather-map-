@@ -91,14 +91,22 @@ except ImportError as e:
 
 # Import NWS forecast fetcher (fixes the "stormy weather on clear days" issue)
 try:
-    from nws_forecast_fetcher import get_athens_forecast, get_forecast_fetcher, NWSForecastFetcher
+    from nws_forecast_fetcher import (
+        get_athens_forecast, 
+        get_forecast_fetcher, 
+        NWSForecastFetcher,
+        get_athens_briefing_with_conditions,
+        get_athens_current_conditions
+    )
     FORECAST_FETCHER_AVAILABLE = True
-    print("✓ NWS forecast fetcher loaded - Athens, AL forecasts enabled")
+    print("✓ NWS forecast fetcher loaded - Athens, AL forecasts with current conditions enabled")
 except ImportError as e:
     print(f"⚠ Forecast fetcher not available: {e}")
     FORECAST_FETCHER_AVAILABLE = False
     get_athens_forecast = None
     get_forecast_fetcher = None
+    get_athens_briefing_with_conditions = None
+    get_athens_current_conditions = None
 
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
@@ -889,26 +897,34 @@ def api_commentary_story():
 
 @app.get('/api/local-forecast')
 def api_local_forecast():
-    """Get actual NWS forecast for Athens, AL - fixes 'stormy weather on clear days' issue"""
+    """Get actual NWS forecast for Athens, AL with current temperature and wind conditions"""
     if not FORECAST_FETCHER_AVAILABLE:
         return jsonify({'success': False, 'error': 'Forecast fetcher not available'}), 503
     
     try:
         fetcher = get_forecast_fetcher()
         forecast_data = fetcher.get_home_forecast()
+        current_conditions = fetcher.get_athens_current_conditions()
         
         if forecast_data:
-            return jsonify({
+            response_data = {
                 'success': True,
                 'location': 'Athens, AL',
                 'coordinates': '34.80°N, 86.97°W',
                 'forecast': forecast_data,
                 'summary': fetcher.get_short_forecast_summary(forecast_data, 3),
                 'athens_broadcast': fetcher.get_athens_forecast_specifically(),
+                'athens_broadcast_with_conditions': get_athens_briefing_with_conditions(),
                 'severe_expected': fetcher.is_severe_weather_expected(forecast_data),
                 'updated': forecast_data.get('updated'),
                 'periods_count': len(forecast_data.get('periods', []))
-            })
+            }
+            
+            # Add current conditions if available
+            if current_conditions:
+                response_data['current_conditions'] = current_conditions
+            
+            return jsonify(response_data)
         else:
             return jsonify({
                 'success': False,
@@ -930,18 +946,25 @@ def api_forecast_debug():
         
         fetcher = get_forecast_fetcher()
         forecast = fetcher.get_home_forecast()
+        current_conditions = fetcher.get_athens_current_conditions()
         
         if forecast:
             periods = forecast.get('periods', [])
-            return jsonify({
+            response = {
                 'status': 'OK',
                 'message': 'Forecast fetching is working',
                 'location': 'Athens, AL (34.80°N, 86.97°W)',
                 'periods_fetched': len(periods),
                 'first_period': periods[0] if periods else None,
                 'updated': forecast.get('updated'),
-                'current_forecast': fetcher.get_athens_forecast_specifically()
-            })
+                'current_forecast': fetcher.get_athens_forecast_specifically(),
+                'forecast_with_conditions': get_athens_briefing_with_conditions()
+            }
+            
+            if current_conditions:
+                response['current_conditions'] = current_conditions
+            
+            return jsonify(response)
         else:
             return jsonify({
                 'status': 'ERROR',
@@ -1066,17 +1089,17 @@ def api_broadcast_scheduled():
             broadcast_data['broadcast_type'] = 'hourly_update'
             broadcast_data['local_area'] = local_area
             
-            # FIRST: Get Athens, AL local forecast (fixes the "stormy weather" issue!)
+            # FIRST: Get Athens, AL local forecast WITH CURRENT CONDITIONS
             if FORECAST_FETCHER_AVAILABLE:
                 try:
-                    local_forecast = get_athens_forecast()
+                    local_forecast = get_athens_briefing_with_conditions()
                     broadcast_data['content'].append({
                         'type': 'local_forecast',
                         'priority': 'high',
                         'text': local_forecast,
-                        'duration_estimate': '15-20 seconds'
+                        'duration_estimate': '20-25 seconds'
                     })
-                    print(f"✓ Local forecast added to :30 broadcast")
+                    print(f"✓ Local forecast with current conditions added to :30 broadcast")
                 except Exception as e:
                     print(f"⚠ Error getting local forecast: {e}")
                     broadcast_data['content'].append({
