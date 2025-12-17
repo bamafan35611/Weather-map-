@@ -81,9 +81,9 @@ except ImportError as e:
 
 # Import weather commentary system
 try:
-    from weather_commentary import WeatherCommentary, get_national_briefing, get_hourly_update, get_weather_story
+    from weather_commentary import WeatherCommentary, get_national_briefing, get_regional_briefing, get_hourly_update, get_weather_story
     COMMENTARY_AVAILABLE = True
-    print("✓ Weather commentary system loaded")
+    print("✓ Weather commentary system loaded - Regional briefing enabled")
 except ImportError as e:
     print(f"⚠ Weather commentary not available: {e}")
     COMMENTARY_AVAILABLE = False
@@ -838,9 +838,9 @@ def api_voice_custom():
 # ----------------------------------------------------------------------
 # Weather Commentary Endpoints
 # ----------------------------------------------------------------------
-@app.get('/api/commentary/national')
-def api_commentary_national():
-    """Get national weather briefing with commentary"""
+@app.get('/api/commentary/regional')
+def api_commentary_regional():
+    """Get REGIONAL weather briefing for North Alabama & Southern Tennessee"""
     if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
         return jsonify({'success': False, 'error': 'Commentary system not available'}), 503
     
@@ -849,12 +849,38 @@ def api_commentary_national():
         alerts = predictor.fetch_active_alerts()
         scored = score_all_alerts(alerts) if alerts else []
         
-        briefing = get_national_briefing(alerts, scored)
+        briefing = get_regional_briefing(alerts, scored)
         
         return jsonify({
             'success': True,
             'commentary': briefing,
             'alert_count': len(alerts),
+            'region': 'North Alabama & Southern Tennessee',
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.get('/api/commentary/national')
+def api_commentary_national():
+    """Get regional weather briefing (legacy endpoint - now returns regional data)"""
+    # Keep this endpoint for backward compatibility, but return regional briefing
+    if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Commentary system not available'}), 503
+    
+    try:
+        predictor = LocalPredictor()
+        alerts = predictor.fetch_active_alerts()
+        scored = score_all_alerts(alerts) if alerts else []
+        
+        # Use regional briefing instead of national
+        briefing = get_regional_briefing(alerts, scored)
+        
+        return jsonify({
+            'success': True,
+            'commentary': briefing,
+            'alert_count': len(alerts),
+            'note': 'This endpoint now returns regional briefings for North Alabama & Southern Tennessee',
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
@@ -1019,14 +1045,14 @@ def api_broadcast_scheduled():
             'content': []
         }
         
-        # :00 - National Briefing
+        # :00 - Regional Briefing (North Alabama & Southern Tennessee)
         if current_minute == 0:
-            briefing = get_national_briefing(alerts, scored)
-            broadcast_data['broadcast_type'] = 'national_briefing'
+            briefing = get_regional_briefing(alerts, scored)
+            broadcast_data['broadcast_type'] = 'regional_briefing'
             broadcast_data['content'].append({
                 'type': 'commentary',
                 'text': briefing,
-                'duration_estimate': '60 seconds'
+                'duration_estimate': '45-60 seconds'
             })
         
         # :15 - Top Alerts with Voice Styles (🔧 NOW WITH COOLDOWN!)
