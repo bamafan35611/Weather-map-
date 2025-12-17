@@ -96,7 +96,8 @@ try:
         get_forecast_fetcher, 
         NWSForecastFetcher,
         get_athens_briefing_with_conditions,
-        get_athens_current_conditions
+        get_athens_current_conditions,
+        get_city_briefing_with_conditions
     )
     FORECAST_FETCHER_AVAILABLE = True
     print("✓ NWS forecast fetcher loaded - Athens, AL forecasts with current conditions enabled")
@@ -107,6 +108,18 @@ except ImportError as e:
     get_forecast_fetcher = None
     get_athens_briefing_with_conditions = None
     get_athens_current_conditions = None
+    get_city_briefing_with_conditions = None
+
+# Import local cities database
+try:
+    from local_cities import get_random_city, format_city_location
+    LOCAL_CITIES_AVAILABLE = True
+    print("✓ Local cities database loaded - Random city briefings enabled")
+except ImportError as e:
+    print(f"⚠ Local cities database not available: {e}")
+    LOCAL_CITIES_AVAILABLE = False
+    get_random_city = None
+    format_city_location = None
 
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
@@ -1060,6 +1073,32 @@ def api_broadcast_scheduled():
                         'voice_style': 'calm'
                     })
                 
+                # 🆕 ADD RANDOM CITY BRIEFING AT :15
+                if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
+                    try:
+                        random_city = get_random_city()
+                        city_briefing = get_city_briefing_with_conditions(
+                            random_city['name'],
+                            random_city['lat'],
+                            random_city['lon'],
+                            random_city['state']
+                        )
+                        
+                        broadcast_data['content'].append({
+                            'type': 'local_city_briefing',
+                            'text': city_briefing,
+                            'voice_style': 'calm',
+                            'city_info': {
+                                'name': random_city['name'],
+                                'state': random_city['state'],
+                                'county': random_city['county']
+                            },
+                            'duration_estimate': '15-20 seconds'
+                        })
+                        print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
+                    except Exception as e:
+                        print(f"⚠ Error adding city briefing: {e}")
+                
                 # Check for pre-alerts
                 if PRE_ALERT_AVAILABLE:
                     pre_alerts = get_pre_alert_predictions()
@@ -1078,11 +1117,38 @@ def api_broadcast_scheduled():
                                     'voice_style': announcement['style']
                                 })
             else:
+                # No alerts - just give city briefing
                 broadcast_data['content'].append({
                     'type': 'quiet',
                     'text': 'NorthBamaWX. All clear at this time.',
                     'voice_style': 'calm'
                 })
+                
+                # 🆕 ADD RANDOM CITY BRIEFING WHEN NO ALERTS
+                if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
+                    try:
+                        random_city = get_random_city()
+                        city_briefing = get_city_briefing_with_conditions(
+                            random_city['name'],
+                            random_city['lat'],
+                            random_city['lon'],
+                            random_city['state']
+                        )
+                        
+                        broadcast_data['content'].append({
+                            'type': 'local_city_briefing',
+                            'text': city_briefing,
+                            'voice_style': 'calm',
+                            'city_info': {
+                                'name': random_city['name'],
+                                'state': random_city['state'],
+                                'county': random_city['county']
+                            },
+                            'duration_estimate': '15-20 seconds'
+                        })
+                        print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
+                    except Exception as e:
+                        print(f"⚠ Error adding city briefing: {e}")
         
         # :30 - Hourly Update WITH LOCAL FORECAST
         elif current_minute == 30:
