@@ -1097,7 +1097,8 @@ function getPracticalAdvice(temp, conditions) {
 
 // === ROTATING 15-MINUTE BROADCAST SYSTEM ===
 
-// :00 - Top of Hour: Alert Status Update + Current Conditions (CHATTY VERSION)
+
+// :00 - Top of Hour Update - USES FLASK API
 async function runTopOfHourUpdate() {
     try {
         if (!speechEnabled) {
@@ -1105,65 +1106,100 @@ async function runTopOfHourUpdate() {
             return;
         }
 
-        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
-        const forecast = await fetchForecastData();
+        console.log('[15min :00] Fetching from Flask API...');
+        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const data = await response.json();
         
-        const now = new Date();
-        const hour = now.toLocaleTimeString('en-US', {
-            timeZone: 'America/Chicago',
-            hour: 'numeric'
-        });
-
-        let parts = [];
+        if (!data.success || data.broadcast_type === 'none') {
+            console.log('[15min :00] No broadcast scheduled');
+            return;
+        }
         
-        // Chatty greeting with day context
-        const greeting = getTimeOfDayGreeting();
-        const dayContext = getDayContext();
-        parts.push(`${greeting}! It's ${hour} o'clock on ${dayContext}.`);
+        console.log(`[15min :00] Broadcasting: ${data.broadcast_type}`);
+        console.log(`[15min :00] Alert count: ${data.alert_count}`);
         
-        // Add current conditions with personality
-        if (forecast && forecast.periods && forecast.periods[0]) {
-            const current = forecast.periods[0];
-            const commentary = getWeatherCommentary(current.temperature, current.shortForecast);
-            const description = getConditionsDescription(current.shortForecast);
-            const advice = getPracticalAdvice(current.temperature, current.shortForecast);
-            
-            parts.push(`${commentary}! Right now in Athens, we're sitting at ${current.temperature} degrees ${description}.`);
-            if (advice) {
-                parts.push(advice);
+        for (const item of data.content) {
+            const text = item.text;
+            console.log(`[15min :00] Speaking: ${text.substring(0, 50)}...`);
+            await speakText(text, '15min-00');
+            if (item.type !== 'quiet') {
+                await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
-
-        // Alert status with conversational tone
-        if (!alerts.length) {
-            parts.push("Weather's staying quiet across North Alabama and southern Tennessee. No alerts in effect.");
-        } else {
-            const warnings = alerts.filter(a => {
-                const p = a.properties || {};
-                const ev = (p.event || '').toLowerCase();
-                return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
-            });
-
-            const watches = alerts.filter(a => {
-                const p = a.properties || {};
-                const ev = (p.event || '').toLowerCase();
-                return ev.includes('watch') && (p.status === 'Actual' || p.status === 'actual');
-            });
-
-            if (warnings.length > 0) {
-                parts.push(`We're tracking some active weather across the region. Currently monitoring ${warnings.length} warning${warnings.length > 1 ? 's' : ''} affecting parts of our coverage area.`);
-            } else if (watches.length > 0) {
-                parts.push(`Keeping an eye on things. We've got ${watches.length} watch${watches.length > 1 ? 'es' : ''} in effect. Conditions are being monitored closely.`);
-            } else {
-                parts.push('Some weather advisories are posted, but nothing serious at this time.');
-            }
-        }
-
-        const text = parts.join(' ');
-        console.log('[15min :00] Speaking top of hour update:', text);
-        await speakText(text, '15min-00');
     } catch (err) {
         console.error('[15min :00] Error:', err);
+    }
+}
+
+// :15 - Quarter Past Update - USES FLASK API
+async function runQuarterPastUpdate() {
+    try {
+        if (!speechEnabled) {
+            console.log('[15min] Speech disabled - skipping :15 update');
+            return;
+        }
+
+        console.log('[15min :15] Fetching from Flask API...');
+        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const data = await response.json();
+        
+        if (!data.success || data.broadcast_type === 'none') {
+            console.log('[15min :15] No broadcast scheduled');
+            return;
+        }
+        
+        console.log(`[15min :15] Broadcasting: ${data.broadcast_type}`);
+        console.log(`[15min :15] Alert count: ${data.alert_count}`);
+        
+        for (const item of data.content) {
+            const text = item.text;
+            console.log(`[15min :15] Speaking: ${text.substring(0, 50)}...`);
+            await speakText(text, '15min-15');
+            if (item.type !== 'quiet') {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    } catch (err) {
+        console.error('[15min :15] Error:', err);
+    }
+}
+
+// :30 - Half Past: Detailed Regional Update (calls existing function)
+async function runHalfPastUpdate() {
+    console.log('[15min :30] Triggering detailed regional update');
+    await runLocalNorthAlabamaBroadcast();
+}
+
+// :45 - Quarter Till Update - USES FLASK API
+async function runQuarterTillUpdate() {
+    try {
+        if (!speechEnabled) {
+            console.log('[15min] Speech disabled - skipping :45 update');
+            return;
+        }
+
+        console.log('[15min :45] Fetching from Flask API...');
+        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const data = await response.json();
+        
+        if (!data.success || data.broadcast_type === 'none') {
+            console.log('[15min :45] No broadcast scheduled');
+            return;
+        }
+        
+        console.log(`[15min :45] Broadcasting: ${data.broadcast_type}`);
+        console.log(`[15min :45] Alert count: ${data.alert_count}`);
+        
+        for (const item of data.content) {
+            const text = item.text;
+            console.log(`[15min :45] Speaking: ${text.substring(0, 50)}...`);
+            await speakText(text, '15min-45');
+            if (item.type !== 'quiet') {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    } catch (err) {
+        console.error('[15min :45] Error:', err);
     }
 }
 
