@@ -262,7 +262,7 @@ class WeatherCommentary:
             if severe_count > 0:
                 lines.append(f"{severe_count} of these are high severity warnings requiring immediate attention.")
         else:
-            lines.append("Quiet weather across the country at this hour.")
+            lines.append("Quiet weather across North Alabama and Southern Tennessee at this hour.")
         
         # Local check
         local_alerts = self._filter_by_location(alerts, local_area)
@@ -284,15 +284,15 @@ class WeatherCommentary:
         """Generate commentary when weather is quiet"""
         
         options = [
-            "Quiet weather across the nation right now. No significant alerts to report. We're keeping an eye on conditions and will update you if anything develops.",
+            "Quiet weather across North Alabama and Southern Tennessee right now. No significant alerts to report. We're keeping an eye on conditions and will update you if anything develops.",
             
             "All quiet on the weather front at this hour. The National Weather Service has no major alerts active. Enjoying the calm before the next weather system arrives.",
             
-            "Calm conditions nationwide. Our AI monitoring system is active but finding nothing to worry about. This is the kind of weather everyone can appreciate.",
+            "Calm conditions across our monitoring area. Our AI monitoring system is active but finding nothing to worry about. This is the kind of weather everyone can appreciate.",
             
-            "Weather conditions are tranquil across the country. No watches or warnings in effect. We'll stay vigilant and keep you updated.",
+            "Weather conditions are tranquil across North Alabama and Southern Tennessee. No watches or warnings in effect for our monitoring area. We'll stay vigilant and keep you updated.",
             
-            "Taking advantage of the quiet weather today. Our automated systems are monitoring all 50 states, ready to alert you the moment conditions change."
+            "Taking advantage of the quiet weather today. Our automated systems are monitoring our 14 counties across North Alabama and Southern Tennessee, ready to alert you the moment conditions change."
         ]
         
         return random.choice(options)
@@ -383,7 +383,7 @@ class WeatherCommentary:
         
         parts = [f"{count} {type_name.lower()}" for type_name, count in top_types]
         
-        return "We're dealing with " + ", ".join(parts) + " situations across the country."
+        return "We're dealing with " + ", ".join(parts) + " situations across our monitoring area."
     
     def _find_unusual_weather(self, alerts: List[Dict]) -> Optional[str]:
         """Find and describe unusual weather patterns"""
