@@ -32,8 +32,8 @@ class SeverityScorer:
             'blizzard warning': 70,
             'ice storm warning': 75,
             'high wind warning': 65,
-            'tornado watch': 45,
-            'severe thunderstorm watch': 40,
+            'tornado watch': 60,  # 🆕 RAISED from 45 - Important to announce!
+            'severe thunderstorm watch': 55,  # 🆕 RAISED from 40
             'flash flood watch': 35,
             'winter storm warning': 50,
             'snow squall warning': 60,

@@ -124,6 +124,10 @@ except ImportError as e:
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
+
+# COOLDOWN CONFIGURATION
+ENABLE_ALERT_COOLDOWN = True  # Set to False to announce ALL alerts every time (for testing)
+
 class AlertAnnouncementManager:
     """Prevents alert spam by tracking announcements and applying cooldowns"""
     
@@ -137,9 +141,15 @@ class AlertAnnouncementManager:
         self.UPDATE_COOLDOWN = 300  # 5 minutes after update announcement
         
         print("✓ Alert announcement manager initialized")
+        if not ENABLE_ALERT_COOLDOWN:
+            print("⚠️  COOLDOWN DISABLED - All alerts will be announced every time!")
     
     def should_announce(self, alert):
         """Determine if an alert should be announced"""
+        # If cooldown disabled, always announce
+        if not ENABLE_ALERT_COOLDOWN:
+            return True
+        
         alert_id = alert.get('id')
         if not alert_id:
             return False
@@ -1090,6 +1100,35 @@ def api_broadcast_scheduled():
                                     'location': alert.get('areaDesc')
                                 }
                             })
+                    
+                    # 🆕 ADD WATCH CALLOUT (if any watches in top 10 weren't announced)
+                    watches_in_top_10 = [a for a in alerts_to_announce[:10] if 'watch' in a.get('event', '').lower()]
+                    announced_watches = [a for a in alerts_to_announce[:3] if 'watch' in a.get('event', '').lower()]
+                    
+                    # If there are watches that didn't make the top 3
+                    if len(watches_in_top_10) > len(announced_watches):
+                        unannounced_watches = [w for w in watches_in_top_10 if w not in announced_watches]
+                        
+                        # Focus on tornado and severe thunderstorm watches
+                        important_watches = [w for w in unannounced_watches 
+                                            if 'tornado' in w.get('event', '').lower() or 
+                                               'severe' in w.get('event', '').lower()]
+                        
+                        if important_watches:
+                            watch_event = important_watches[0].get('event', 'Weather Watch')
+                            watch_area = important_watches[0].get('areaDesc', 'the region')
+                            
+                            # Simplify area description
+                            if ';' in watch_area:
+                                watch_area = watch_area.split(';')[0] + " and surrounding counties"
+                            
+                            broadcast_data['content'].append({
+                                'type': 'watch_callout',
+                                'text': f"Also, a {watch_event} remains in effect for {watch_area}.",
+                                'voice_style': 'concerned',
+                                'duration_estimate': '5 seconds'
+                            })
+                            print(f"✓ Added watch callout: {watch_event}")
                 else:
                     # All alerts filtered by cooldown
                     print("⏸ All alerts recently announced - skipping alert broadcast")
