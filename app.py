@@ -1,3 +1,16 @@
+print("=" * 80)
+print("🚨 APP.PY STARTING - FORCING MODULE RELOAD")
+print("=" * 80)
+
+# Force reload of local_predictor
+import sys
+if 'local_predictor' in sys.modules:
+    del sys.modules['local_predictor']
+
+import local_predictor
+print(f"✓ local_predictor loaded from: {local_predictor.__file__}")
+
+import requests
 import os
 import glob
 import pickle
