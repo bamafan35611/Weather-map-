@@ -3089,29 +3089,13 @@ async function fetchAndDisplayWatches() {
         // Process watches and get geometries
         const processedWatches = await processWatchesWithZones(allAlerts);
         
-        // Process warnings without geometry - WITH RETRY
-        let processedWarnings = [];
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (processedWarnings.length === 0 && retryCount < maxRetries) {
-            processedWarnings = await processWarningsWithZones(allAlerts);
-            
-            if (processedWarnings.length === 0 && retryCount < maxRetries - 1) {
-                retryCount++;
-                console.log(`[Warnings] Retry ${retryCount}/${maxRetries} in 2 seconds...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } else {
-                break;
-            }
-        }
+        // Process warnings without geometry too!
+        const processedWarnings = await processWarningsWithZones(allAlerts);
         
         // Merge processed warnings back into allAlerts so they show on map
         if (processedWarnings.length > 0) {
             allAlerts.push(...processedWarnings);
             console.log(`✓ Added ${processedWarnings.length} warnings with zone geometry to map`);
-        } else if (retryCount > 0) {
-            console.warn('⚠️ Could not fetch warning geometry after retries');
         }
         
         // Add watches to map
@@ -4265,43 +4249,6 @@ if (map) {
 
 console.log('[Map Zoom] 🎙️ Map zoom control system initialized');
 console.log('[Map Zoom] 📡 Listening for zoom commands from broadcaster');
-
-// ============================================
-// PERIODIC WARNING GEOMETRY RETRY
-// ============================================
-// Retry warning geometry fetch every 30 seconds until successful
-let warningGeometryRetries = 0;
-const warningGeometryInterval = setInterval(async () => {
-    if (warningGeometryRetries >= 10) {
-        console.log('[Warnings] ✓ Stopped retrying after 10 attempts');
-        clearInterval(warningGeometryInterval);
-        return;
-    }
-    
-    try {
-        // Check if we have warnings without polygons visible
-        const warningsOnMap = map.querySourceFeatures('alerts', {
-            filter: ['all',
-                ['has', 'event'],
-                ['in', 'warning', ['downcase', ['get', 'event']]]
-            ]
-        });
-        
-        if (warningsOnMap.length === 0) {
-            console.log('[Warnings] 🔄 No warnings visible, retrying zone fetch...');
-            await fetchAndDisplayWatches();
-            warningGeometryRetries++;
-        } else {
-            console.log('[Warnings] ✓ Warnings are visible, stopping retry');
-            clearInterval(warningGeometryInterval);
-        }
-    } catch (error) {
-        console.warn('[Warnings] Retry check error:', error);
-        warningGeometryRetries++;
-    }
-}, 30000); // Every 30 seconds
-
-console.log('[Warnings] 🔄 Periodic warning geometry retry enabled (30s intervals)');
 
 </script>
 
