@@ -5,44 +5,72 @@ import traceback
 class LocalPredictor:
 
     def __init__(self):
-        pass
+        # 14 monitored counties - North Alabama (11) + Southern Tennessee (3)
+        self.MONITORED_ZONES = [
+            # North Alabama counties
+            'ALC033',  # Colbert County, AL
+            'ALC043',  # Cullman County, AL
+            'ALC049',  # DeKalb County, AL
+            'ALC059',  # Franklin County, AL
+            'ALC071',  # Jackson County, AL
+            'ALC079',  # Lawrence County, AL
+            'ALC077',  # Lauderdale County, AL
+            'ALC083',  # Limestone County, AL (Athens)
+            'ALC089',  # Madison County, AL (Huntsville)
+            'ALC095',  # Marshall County, AL
+            'ALC103',  # Morgan County, AL
+            # Southern Tennessee counties
+            'TNC051',  # Franklin County, TN
+            'TNC103',  # Lincoln County, TN
+            'TNC127'   # Moore County, TN
+        ]
 
     def fetch_active_alerts(self):
-        url = "https://api.weather.gov/alerts/active"
+        """Fetch alerts ONLY for the 14 monitored counties"""
+        
+        # Build URL with zone filtering
+        zone_params = '&'.join([f'zone={zone}' for zone in self.MONITORED_ZONES])
+        url = f"https://api.weather.gov/alerts/active?{zone_params}"
+        
+        print(f"🌍 Fetching alerts for {len(self.MONITORED_ZONES)} monitored counties...")
+        
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, headers={'Accept': 'application/geo+json'}, timeout=10)
             response.raise_for_status()
             data = response.json()
             features = data.get('features', [])
+            
+            print(f"✅ Retrieved {len(features)} alerts for monitored area")
+            
             alerts = []
 
             for feature in features:
                 props = feature.get('properties', {})
                 geometry = feature.get('geometry', {})
 
-                # Process severe and high-impact alerts, including winter weather
-                event = (props.get('event') or '').lower()
+                alert = {
+                    'id': props.get('id'),
+                    'event': props.get('event'),
+                    'severity': props.get('severity'),
+                    'urgency': props.get('urgency'),
+                    'certainty': props.get('certainty'),
+                    'areaDesc': props.get('areaDesc'),
+                    'onset': props.get('onset'),
+                    'expires': props.get('expires'),
+                    'description': props.get('description'),
+                    'instruction': props.get('instruction'),
+                    'geometry': geometry
+                }
 
-                severe_keywords = ['tornado', 'severe', 'flood', 'wind', 'thunderstorm']
-                winter_keywords = ['winter', 'snow', 'blizzard', 'ice', 'freezing', 'sleet', 'cold']
+                event_name = alert['event'] or 'Unknown'
+                area = alert['areaDesc'] or 'Unknown'
+                print(f"  📍 {event_name} - {area}")
 
-                if any(keyword in event for keyword in severe_keywords + winter_keywords):
-                    alert = {
-                        'id': props.get('id'),
-                        'event': props.get('event'),
-                        'severity': props.get('severity'),
-                        'urgency': props.get('urgency'),
-                        'areaDesc': props.get('areaDesc'),
-                        'onset': props.get('onset'),
-                        'expires': props.get('expires'),
-                        'description': props.get('description'),
-                        'geometry': geometry
-                    }
+                alerts.append(alert)
 
-                    print(f"❄️ Winter/Severe Alert Detected: {alert['event']} in {alert['areaDesc']}")
-
-                    alerts.append(alert)
-
+            if len(alerts) == 0:
+                print("✓ No active alerts in monitored counties")
+            
             return alerts
 
         except Exception as e:
