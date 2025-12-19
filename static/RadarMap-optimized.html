@@ -3120,6 +3120,88 @@ async function processWatchesWithZones(alerts) {
     return processedWatches;
 }
 
+// Process warnings without geometry using zone codes (same logic as watches)
+async function processWarningsWithZones(alerts) {
+    // Filter warnings without geometry - include tornado, severe thunderstorm, flash flood, and flood warnings
+    const warningsWithoutGeometry = alerts.filter(a => {
+        const event = (a.properties.event || '').toLowerCase();
+        return (event.includes('tornado warning') || 
+                event.includes('severe thunderstorm warning') || 
+                event.includes('flash flood warning') ||
+                event.includes('flood warning')) && !a.geometry;
+    });
+    
+    if (warningsWithoutGeometry.length === 0) {
+        console.log('No warnings need zone geometry processing');
+        return [];
+    }
+    
+    console.log(`Processing ${warningsWithoutGeometry.length} warnings with zone codes...`);
+    
+    const processedWarnings = [];
+    
+    for (const warning of warningsWithoutGeometry) {
+        try {
+            // Get UGC codes from geocode field
+            const ugcCodes = warning.properties.geocode?.UGC || [];
+            
+            if (ugcCodes.length === 0) {
+                console.warn('Warning has no UGC codes:', warning.properties.event);
+                continue;
+            }
+            
+            console.log(`Fetching ${ugcCodes.length} zones for ${warning.properties.event}`);
+            
+            // Fetch geometries for all zones (limit to first 20 to avoid overwhelming API)
+            const zonesToFetch = ugcCodes.slice(0, 20);
+            const geometries = await Promise.all(
+                zonesToFetch.map(zoneId => fetchZoneGeometry(zoneId))
+            );
+            
+            // Filter out null geometries
+            const validGeometries = geometries.filter(g => g !== null);
+            
+            if (validGeometries.length === 0) {
+                console.warn(`⚠️ ${warning.properties.event}: 0/${zonesToFetch.length} zones found`);
+                continue;
+            }
+            
+            console.log(`✓ ${warning.properties.event}: ${validGeometries.length}/${zonesToFetch.length} zones loaded`);
+            
+            // Combine all zone geometries into a MultiPolygon
+            const allCoordinates = [];
+            validGeometries.forEach(geom => {
+                if (geom.type === 'Polygon') {
+                    allCoordinates.push(geom.coordinates);
+                } else if (geom.type === 'MultiPolygon') {
+                    geom.coordinates.forEach(poly => allCoordinates.push(poly));
+                }
+            });
+            
+            const combinedGeometry = {
+                type: 'MultiPolygon',
+                coordinates: allCoordinates
+            };
+            
+            // Create new warning feature with geometry
+            processedWarnings.push({
+                type: 'Feature',
+                properties: warning.properties,
+                geometry: combinedGeometry
+            });
+            
+            console.log(`✓ Processed ${warning.properties.event} with ${validGeometries.length} zones`);
+            
+        } catch (error) {
+            console.error('Error processing warning:', error);
+        }
+    }
+    
+    console.log(`Successfully processed ${processedWarnings.length} warnings`);
+    return processedWarnings;
+}
+
+
 async function fetchAndDisplayWatches() {
     try {
         console.log('Fetching watches for zone geometry processing...');
@@ -3138,6 +3220,15 @@ async function fetchAndDisplayWatches() {
         
         // Process watches and get geometries
         const processedWatches = await processWatchesWithZones(allAlerts);
+        
+        // Process warnings without geometry too!
+        const processedWarnings = await processWarningsWithZones(allAlerts);
+        
+        // Merge processed warnings back into allAlerts so they show on map
+        if (processedWarnings.length > 0) {
+            allAlerts.push(...processedWarnings);
+            console.log(`✓ Added ${processedWarnings.length} warnings with zone geometry to map`);
+        }
         
         // Add watches to map
         if (processedWatches.length > 0) {
