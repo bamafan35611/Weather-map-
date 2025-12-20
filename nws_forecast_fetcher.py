@@ -390,84 +390,105 @@ def get_athens_briefing_with_conditions() -> str:
     return forecast_text
 
 
-def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, state: str) -> str:
+def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, state: str, max_retries: int = 3) -> str:
     """
     Get localized forecast for any city in the monitored area
+    ENHANCED with retry logic
     
     Args:
         city_name: Name of the city
         lat: Latitude
         lon: Longitude  
         state: State abbreviation (AL or TN)
+        max_retries: Maximum number of retry attempts
     
     Returns:
         Broadcast-ready city briefing with current conditions and forecast
     """
     fetcher = get_forecast_fetcher()
     
-    try:
-        # Get forecast data
-        forecast_data = fetcher.get_forecast_for_location(lat, lon)
-        
-        if not forecast_data or not forecast_data.get('periods'):
-            return f"{city_name}, {state} forecast is temporarily unavailable."
-        
-        # Get current observation
-        current_obs = fetcher.get_current_observation(lat, lon)
-        
-        # Build the briefing
-        briefing_parts = []
-        briefing_parts.append(f"{city_name}, {state}:")
-        
-        # Add current conditions if available
-        if current_obs:
-            conditions_parts = []
+    import time
+    
+    for attempt in range(max_retries):
+        try:
+            # Get forecast data
+            forecast_data = fetcher.get_forecast_for_location(lat, lon)
             
-            # Temperature
-            temp_c = current_obs.get('temperature', {}).get('value')
-            if temp_c is not None:
-                temp_f = round((temp_c * 9/5) + 32)
-                conditions_parts.append(f"Currently {temp_f} degrees")
+            if not forecast_data or not forecast_data.get('periods'):
+                if attempt < max_retries - 1:
+                    print(f"⚠️ Attempt {attempt + 1}/{max_retries} failed for {city_name}, retrying in 2 seconds...")
+                    time.sleep(2)
+                    continue
+                return f"{city_name}, {state} forecast is temporarily unavailable."
             
-            # Wind
-            wind_ms = current_obs.get('windSpeed', {}).get('value')
-            if wind_ms is not None and wind_ms > 0:
-                wind_mph = round(wind_ms * 2.237)
-                wind_dir = current_obs.get('windDirection', {}).get('value')
-                
-                if wind_dir is not None:
-                    direction = fetcher._degrees_to_cardinal(wind_dir)
-                    wind_text = f"winds {direction} at {wind_mph}"
-                else:
-                    wind_text = f"winds at {wind_mph}"
-                
-                # Check for gusts
-                gust_ms = current_obs.get('windGust', {}).get('value')
-                if gust_ms is not None:
-                    gust_mph = round(gust_ms * 2.237)
-                    if gust_mph > wind_mph + 5:
-                        wind_text += f" gusting to {gust_mph}"
-                
-                conditions_parts.append(wind_text + " miles per hour")
+            # Get current observation (don't retry if this fails, it's optional)
+            current_obs = None
+            try:
+                current_obs = fetcher.get_current_observation(lat, lon)
+            except:
+                pass  # Observations are optional
             
-            if conditions_parts:
-                briefing_parts.append(", ".join(conditions_parts) + ".")
-        
-        # Add forecast (current period)
-        current_period = forecast_data['periods'][0]
-        briefing_parts.append(f"{current_period['name']}, {current_period['shortForecast']}.")
-        
-        # Add high/low temperature
-        temp = current_period['temperature']
-        temp_unit = current_period['temperatureUnit']
-        temp_trend = "High" if current_period['isDaytime'] else "Low"
-        briefing_parts.append(f"{temp_trend} of {temp} degrees.")
-        
-        return " ".join(briefing_parts)
-        
-    except Exception as e:
-        print(f"Error getting briefing for {city_name}: {e}")
-        return f"{city_name}, {state} forecast is temporarily unavailable."
+            # Build the briefing
+            briefing_parts = []
+            briefing_parts.append(f"{city_name}, {state}:")
+            
+            # Add current conditions if available
+            if current_obs:
+                conditions_parts = []
+                
+                # Temperature
+                temp_c = current_obs.get('temperature', {}).get('value')
+                if temp_c is not None:
+                    temp_f = round((temp_c * 9/5) + 32)
+                    conditions_parts.append(f"Currently {temp_f} degrees")
+                
+                # Wind
+                wind_ms = current_obs.get('windSpeed', {}).get('value')
+                if wind_ms is not None and wind_ms > 0:
+                    wind_mph = round(wind_ms * 2.237)
+                    wind_dir = current_obs.get('windDirection', {}).get('value')
+                    
+                    if wind_dir is not None:
+                        direction = fetcher._degrees_to_cardinal(wind_dir)
+                        wind_text = f"winds {direction} at {wind_mph}"
+                    else:
+                        wind_text = f"winds at {wind_mph}"
+                    
+                    # Check for gusts
+                    gust_ms = current_obs.get('windGust', {}).get('value')
+                    if gust_ms is not None:
+                        gust_mph = round(gust_ms * 2.237)
+                        if gust_mph > wind_mph + 5:
+                            wind_text += f" gusting to {gust_mph}"
+                    
+                    conditions_parts.append(wind_text + " miles per hour")
+                
+                if conditions_parts:
+                    briefing_parts.append(", ".join(conditions_parts) + ".")
+            
+            # Add forecast (current period)
+            current_period = forecast_data['periods'][0]
+            briefing_parts.append(f"{current_period['name']}, {current_period['shortForecast']}.")
+            
+            # Add high/low temperature
+            temp = current_period['temperature']
+            temp_unit = current_period['temperatureUnit']
+            temp_trend = "High" if current_period['isDaytime'] else "Low"
+            briefing_parts.append(f"{temp_trend} of {temp} degrees.")
+            
+            print(f"✅ Successfully fetched forecast for {city_name}")
+            return " ".join(briefing_parts)
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"⚠️ Attempt {attempt + 1}/{max_retries} error for {city_name}: {e}, retrying in 2 seconds...")
+                time.sleep(2)
+                continue
+            else:
+                print(f"❌ All retries failed for {city_name}: {e}")
+                return f"{city_name}, {state} forecast is temporarily unavailable."
+    
+    return f"{city_name}, {state} forecast is temporarily unavailable."
 
 
 if __name__ == '__main__':

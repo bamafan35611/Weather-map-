@@ -1151,31 +1151,50 @@ def api_broadcast_scheduled():
                         'voice_style': 'calm'
                     })
                 
-                # 🆕 ADD RANDOM CITY BRIEFING AT :15
+                # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
-                    try:
-                        random_city = get_random_city()
-                        city_briefing = get_city_briefing_with_conditions(
-                            random_city['name'],
-                            random_city['lat'],
-                            random_city['lon'],
-                            random_city['state']
-                        )
-                        
-                        broadcast_data['content'].append({
-                            'type': 'local_city_briefing',
-                            'text': city_briefing,
-                            'voice_style': 'calm',
-                            'city_info': {
-                                'name': random_city['name'],
-                                'state': random_city['state'],
-                                'county': random_city['county']
-                            },
-                            'duration_estimate': '15-20 seconds'
-                        })
-                        print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
-                    except Exception as e:
-                        print(f"⚠ Error adding city briefing: {e}")
+                    city_briefing = None
+                    attempts = 0
+                    max_city_attempts = 3  # Try up to 3 different cities
+                    
+                    while city_briefing is None and attempts < max_city_attempts:
+                        try:
+                            random_city = get_random_city()
+                            print(f"🎲 Trying city {attempts + 1}/{max_city_attempts}: {random_city['name']}, {random_city['state']}")
+                            
+                            city_briefing = get_city_briefing_with_conditions(
+                                random_city['name'],
+                                random_city['lat'],
+                                random_city['lon'],
+                                random_city['state']
+                            )
+                            
+                            # Check if it's an error message
+                            if "temporarily unavailable" in city_briefing:
+                                print(f"⚠️ {random_city['name']} forecast unavailable, trying another city...")
+                                city_briefing = None
+                                attempts += 1
+                            else:
+                                # Success!
+                                broadcast_data['content'].append({
+                                    'type': 'local_city_briefing',
+                                    'text': city_briefing,
+                                    'voice_style': 'calm',
+                                    'city_info': {
+                                        'name': random_city['name'],
+                                        'state': random_city['state'],
+                                        'county': random_city['county']
+                                    },
+                                    'duration_estimate': '15-20 seconds'
+                                })
+                                print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
+                                break
+                        except Exception as e:
+                            print(f"⚠️ Error with {random_city['name']}: {e}")
+                            attempts += 1
+                    
+                    if city_briefing is None:
+                        print(f"❌ All {max_city_attempts} city attempts failed, skipping city briefing")
                 
                 # Check for pre-alerts
                 if PRE_ALERT_AVAILABLE:
@@ -1202,31 +1221,48 @@ def api_broadcast_scheduled():
                     'voice_style': 'calm'
                 })
                 
-                # 🆕 ADD RANDOM CITY BRIEFING WHEN NO ALERTS
+                # 🆕 ADD RANDOM CITY BRIEFING WHEN NO ALERTS WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
-                    try:
-                        random_city = get_random_city()
-                        city_briefing = get_city_briefing_with_conditions(
-                            random_city['name'],
-                            random_city['lat'],
-                            random_city['lon'],
-                            random_city['state']
-                        )
-                        
-                        broadcast_data['content'].append({
-                            'type': 'local_city_briefing',
-                            'text': city_briefing,
-                            'voice_style': 'calm',
-                            'city_info': {
-                                'name': random_city['name'],
-                                'state': random_city['state'],
-                                'county': random_city['county']
-                            },
-                            'duration_estimate': '15-20 seconds'
-                        })
-                        print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
-                    except Exception as e:
-                        print(f"⚠ Error adding city briefing: {e}")
+                    city_briefing = None
+                    attempts = 0
+                    max_city_attempts = 3
+                    
+                    while city_briefing is None and attempts < max_city_attempts:
+                        try:
+                            random_city = get_random_city()
+                            print(f"🎲 Trying city {attempts + 1}/{max_city_attempts}: {random_city['name']}, {random_city['state']}")
+                            
+                            city_briefing = get_city_briefing_with_conditions(
+                                random_city['name'],
+                                random_city['lat'],
+                                random_city['lon'],
+                                random_city['state']
+                            )
+                            
+                            if "temporarily unavailable" in city_briefing:
+                                print(f"⚠️ {random_city['name']} forecast unavailable, trying another city...")
+                                city_briefing = None
+                                attempts += 1
+                            else:
+                                broadcast_data['content'].append({
+                                    'type': 'local_city_briefing',
+                                    'text': city_briefing,
+                                    'voice_style': 'calm',
+                                    'city_info': {
+                                        'name': random_city['name'],
+                                        'state': random_city['state'],
+                                        'county': random_city['county']
+                                    },
+                                    'duration_estimate': '15-20 seconds'
+                                })
+                                print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
+                                break
+                        except Exception as e:
+                            print(f"⚠️ Error with {random_city['name']}: {e}")
+                            attempts += 1
+                    
+                    if city_briefing is None:
+                        print(f"❌ All {max_city_attempts} city attempts failed, skipping city briefing")
         
         # :30 - Hourly Update WITH LOCAL FORECAST
         elif current_minute == 30:
