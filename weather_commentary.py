@@ -144,56 +144,52 @@ class WeatherCommentary:
         return " ".join(lines)
     
     def generate_interesting_facts(self, alerts: List[Dict]) -> Optional[str]:
-        """Generate interesting facts about current weather"""
+        """Generate interesting facts about current weather IN OUR MONITORING AREA"""
         
         if not alerts:
             return None
         
         facts = []
         
-        # Count tornado warnings
+        # Count tornado warnings IN OUR AREA
         tornado_count = sum(1 for a in alerts if 'tornado' in a.get('event', '').lower())
         if tornado_count > 0:
-            facts.append(f"We're currently tracking {tornado_count} tornado warning{'s' if tornado_count > 1 else ''} nationwide.")
+            facts.append(f"We're currently tracking {tornado_count} tornado warning{'s' if tornado_count > 1 else ''} across our monitoring area.")
         
-        # Find unusual weather
+        # Find unusual weather IN OUR AREA
         unusual = self._find_unusual_weather(alerts)
         if unusual:
             facts.append(unusual)
         
-        # Geographic spread
-        states = set()
-        for alert in alerts:
-            location = alert.get('areaDesc', '')
-            for state in ['Alabama', 'Oklahoma', 'Texas', 'California', 'Florida', 'Kansas']:
-                if state in location:
-                    states.add(state)
+        # Check if affecting both AL and TN
+        has_alabama = any('Alabama' in a.get('areaDesc', '') for a in alerts)
+        has_tennessee = any('Tennessee' in a.get('areaDesc', '') for a in alerts)
         
-        if len(states) >= 5:
-            facts.append(f"Active weather is affecting {len(states)} states from coast to coast.")
+        if has_alabama and has_tennessee:
+            facts.append("Active weather affecting both North Alabama and Southern Tennessee.")
         
         return " ".join(facts) if facts else None
     
     def generate_comparison_commentary(self, alerts: List[Dict]) -> Optional[str]:
-        """Generate comparative commentary about different weather systems"""
+        """Generate comparative commentary about different weather systems IN OUR AREA"""
         
         if len(alerts) < 2:
             return None
         
         lines = []
         
-        # Compare different types of weather
+        # Compare different types of weather IN OUR MONITORING AREA
         tornado_alerts = [a for a in alerts if 'tornado' in a.get('event', '').lower()]
         flood_alerts = [a for a in alerts if 'flood' in a.get('event', '').lower()]
         wind_alerts = [a for a in alerts if 'wind' in a.get('event', '').lower()]
         
         if tornado_alerts and flood_alerts:
-            lines.append(f"We're dealing with a complex weather pattern today.")
-            lines.append(f"Severe weather in the Plains with {len(tornado_alerts)} tornado warning{'s' if len(tornado_alerts) > 1 else ''},")
-            lines.append(f"while the Pacific Northwest is handling {len(flood_alerts)} flood alert{'s' if len(flood_alerts) > 1 else ''}.")
+            lines.append(f"We're dealing with a complex weather pattern across the region today.")
+            lines.append(f"Tornado concerns with {len(tornado_alerts)} warning{'s' if len(tornado_alerts) > 1 else ''},")
+            lines.append(f"along with {len(flood_alerts)} flood alert{'s' if len(flood_alerts) > 1 else ''}.")
         
-        if wind_alerts and len(wind_alerts) >= 5:
-            lines.append(f"High winds are a major story today, with {len(wind_alerts)} wind alerts active.")
+        if wind_alerts and len(wind_alerts) >= 3:
+            lines.append(f"High winds are a major concern today, with {len(wind_alerts)} wind alerts active across our counties.")
         
         return " ".join(lines) if lines else None
     
@@ -225,10 +221,10 @@ class WeatherCommentary:
         # Add the big picture
         lines.append(self._describe_weather_pattern(alerts))
         
-        # Regional highlights
-        regions_affected = self._count_regions_affected(alerts)
-        if regions_affected >= 3:
-            lines.append(f"This is truly a coast to coast weather event, with {regions_affected} regions experiencing active conditions.")
+        # Regional coverage (only mention if multiple counties affected)
+        county_count = len(set(a.get('areaDesc', '').split(';')[0] for a in alerts if a.get('areaDesc')))
+        if county_count >= 5:
+            lines.append(f"Multiple counties are experiencing active weather conditions across the region.")
         
         # What's coming
         lines.append("We'll continue monitoring these systems and keep you updated.")
@@ -451,9 +447,9 @@ class WeatherCommentary:
         """Get a dynamic opening line"""
         
         openings = [
-            "Good day everyone, this is NorthBamaWX with your national weather intelligence update.",
-            "NorthBamaWX here with a look at active weather across the nation.",
-            "Welcome to NorthBamaWX. Let's check on weather conditions nationwide.",
+            "Good day everyone, this is NorthBamaWX with your weather intelligence update.",
+            "NorthBamaWX here with a look at active weather across the region.",
+            "Welcome to NorthBamaWX. Let's check on weather conditions across our monitoring area.",
             "This is NorthBamaWX, your AI-powered weather intelligence system.",
         ]
         
