@@ -19,7 +19,16 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from flask import Flask, send_from_directory, jsonify, request, Response
 from flask_cors import CORS
-from ml_bridge import get_ml_predictions  # Fetch ML from local PC
+
+# Import ML bridge (optional - for external ML predictions)
+try:
+    from ml_bridge import get_ml_predictions
+    ML_BRIDGE_AVAILABLE = True
+    print("✓ ML bridge loaded (external predictions)")
+except ImportError:
+    ML_BRIDGE_AVAILABLE = False
+    get_ml_predictions = None
+    print("⚠ ML bridge not available (optional - using local predictions)")
 
 # Import local prediction capability
 try:
@@ -405,6 +414,13 @@ def api_history():
 @app.get('/api/ml/predictions')
 def api_predictions():
     """Fetch ML predictions from local PC via ngrok"""
+    if not ML_BRIDGE_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'ML bridge not available - external predictions disabled',
+            'message': 'Use /api/ml/predictions/local for local predictions'
+        }), 503
+    
     data = get_ml_predictions()
     
     if data.get('success'):
