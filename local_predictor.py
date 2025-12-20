@@ -6,9 +6,13 @@ import traceback
 class LocalPredictor:
 
     def __init__(self):
-        # 14 monitored counties - North Alabama (11) + Southern Tennessee (3)
+        # ENHANCED: Monitor BOTH county zones AND forecast zones for maximum coverage
+        # This ensures we catch warnings regardless of which zone type NWS uses
+        
         self.MONITORED_ZONES = [
-            # North Alabama counties
+            # ============================================
+            # NORTH ALABAMA - COUNTY CODES (ALC)
+            # ============================================
             'ALC033',  # Colbert County, AL
             'ALC043',  # Cullman County, AL
             'ALC049',  # DeKalb County, AL
@@ -20,20 +24,49 @@ class LocalPredictor:
             'ALC089',  # Madison County, AL (Huntsville)
             'ALC095',  # Marshall County, AL
             'ALC103',  # Morgan County, AL
-            # Southern Tennessee counties
+            
+            # ============================================
+            # NORTH ALABAMA - FORECAST ZONES (ALZ)
+            # ============================================
+            'ALZ001',  # Lauderdale County
+            'ALZ002',  # Colbert County
+            'ALZ003',  # Franklin County AL
+            'ALZ004',  # Lawrence County
+            'ALZ005',  # Limestone County (Athens)
+            'ALZ006',  # Madison County (Huntsville)
+            'ALZ007',  # Jackson County
+            'ALZ008',  # DeKalb County
+            'ALZ009',  # Marshall County
+            'ALZ016',  # Morgan County
+            'ALZ017',  # Cullman County
+            
+            # ============================================
+            # SOUTHERN TENNESSEE - COUNTY CODES (TNC)
+            # ============================================
             'TNC051',  # Franklin County, TN
             'TNC103',  # Lincoln County, TN
-            'TNC127'   # Moore County, TN
+            'TNC127',  # Moore County, TN
+            
+            # ============================================
+            # SOUTHERN TENNESSEE - FORECAST ZONES (TNZ)
+            # ============================================
+            'TNZ076',  # Lincoln County, TN
+            'TNZ096',  # Franklin County, TN
+            'TNZ097'   # Moore County, TN
         ]
+        
+        print(f"📡 Monitoring {len(self.MONITORED_ZONES)} total zones (county + forecast zones)")
+        print(f"   • North Alabama: 22 zones (11 counties × 2 zone types)")
+        print(f"   • Southern Tennessee: 6 zones (3 counties × 2 zone types)")
 
     def fetch_active_alerts(self):
-        """Fetch alerts ONLY for the 14 monitored counties"""
+        """Fetch alerts ONLY for the monitored zones"""
         
         # Build URL with zone filtering
         zone_params = '&'.join([f'zone={zone}' for zone in self.MONITORED_ZONES])
         url = f"https://api.weather.gov/alerts/active?{zone_params}"
         
-        print(f"🌍 Fetching alerts for {len(self.MONITORED_ZONES)} monitored counties...")
+        print(f"🌍 Fetching alerts for {len(self.MONITORED_ZONES)} monitored zones...")
         
         try:
             response = requests.get(url, headers={'Accept': 'application/geo+json'}, timeout=10)
@@ -43,14 +76,23 @@ class LocalPredictor:
             
             print(f"✅ Retrieved {len(features)} alerts for monitored area")
             
+            # Deduplicate alerts (same alert might appear in both county and forecast zones)
+            seen_ids = set()
             alerts = []
 
             for feature in features:
                 props = feature.get('properties', {})
                 geometry = feature.get('geometry', {})
+                
+                alert_id = props.get('id')
+                
+                # Skip duplicates
+                if alert_id in seen_ids:
+                    continue
+                seen_ids.add(alert_id)
 
                 alert = {
-                    'id': props.get('id'),
+                    'id': alert_id,
                     'event': props.get('event'),
                     'severity': props.get('severity'),
                     'urgency': props.get('urgency'),
@@ -71,6 +113,8 @@ class LocalPredictor:
 
             if len(alerts) == 0:
                 print("✓ No active alerts in monitored counties")
+            else:
+                print(f"📊 Total unique alerts after deduplication: {len(alerts)}")
             
             return alerts
 
