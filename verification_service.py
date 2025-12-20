@@ -1,12 +1,26 @@
 import requests
 from datetime import datetime, timedelta
 from forecast_db import (
-    get_unverified_forecasts, 
-    verify_forecast, 
-    save_actual_event
+    get_forecast_history,
+    verify_forecast,
+    save_alert_history
 )
 from typing import List, Dict, Optional
 import time
+
+def get_unverified_forecasts():
+    """Get forecasts that haven't been verified yet"""
+    # Get recent forecasts (last 24 hours) that aren't verified
+    all_forecasts = get_forecast_history(limit=100)
+    
+    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+    unverified = [f for f in all_forecasts if not f.get('verified') and f.get('timestamp', '') >= cutoff]
+    
+    return unverified
+
+def save_actual_event(event_data):
+    """Save actual event that occurred"""
+    return save_alert_history(event_data)
 
 def fetch_nws_alerts(active_only=True):
     """Fetch current NWS alerts"""
@@ -145,29 +159,49 @@ def verify_forecasts():
         
         if matching_alert:
             # Forecast was correct - event occurred
-            result = 'correct'
             actual_event = matching_alert.get('event')
             print(f"  ✓ CORRECT - Found matching event: {actual_event}")
             
+            # Calculate accuracy
+            accuracy_data = {
+                'actual_time': matching_alert.get('onset'),
+                'actual_event': actual_event,
+                'actual_severity': matching_alert.get('severity'),
+                'matched': True,
+                'time_accuracy': 0.9,  # Can be improved with better time comparison
+                'event_accuracy': 1.0,
+                'notes': f"Matched NWS alert: {matching_alert.get('id')}"
+            }
+            
             # Save the actual event for records
             save_actual_event({
-                'timestamp': matching_alert.get('onset'),
-                'event_type': matching_alert.get('event'),
-                'location': matching_alert.get('areaDesc'),
+                'id': matching_alert.get('id'),
+                'event': matching_alert.get('event'),
                 'severity': matching_alert.get('severity'),
-                'details': {
-                    'headline': matching_alert.get('headline'),
-                    'description': matching_alert.get('description')[:200]
-                },
-                'nws_id': matching_alert.get('id')
+                'urgency': matching_alert.get('urgency'),
+                'certainty': matching_alert.get('certainty'),
+                'areaDesc': matching_alert.get('areaDesc'),
+                'onset': matching_alert.get('onset'),
+                'expires': matching_alert.get('expires'),
+                'verified': True,
+                'notes': f"Matched forecast #{forecast_id}"
             })
         else:
             # No matching event found - false positive
-            result = 'false_positive'
             actual_event = None
             print(f"  ✗ FALSE ALARM - No matching event occurred")
+            
+            accuracy_data = {
+                'actual_time': datetime.now().isoformat(),
+                'actual_event': 'None',
+                'actual_severity': 'None',
+                'matched': False,
+                'time_accuracy': 0.0,
+                'event_accuracy': 0.0,
+                'notes': 'No matching alert found'
+            }
         
-        verify_forecast(forecast_id, result, actual_event)
+        verify_forecast(forecast_id, accuracy_data)
         verified_count += 1
     
     print(f"\n✓ Verification complete: {verified_count} forecasts verified")
