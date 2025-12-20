@@ -143,6 +143,41 @@ except ImportError as e:
     get_random_city = None
     format_city_location = None
 
+# Import storm motion tracking
+try:
+    from storm_motion import add_motion_to_announcement, extract_storm_motion, get_motion_for_broadcast
+    STORM_MOTION_AVAILABLE = True
+    print("✓ Storm motion tracker loaded")
+except ImportError as e:
+    print(f"⚠ Storm motion not available: {e}")
+    STORM_MOTION_AVAILABLE = False
+    add_motion_to_announcement = lambda text, alert: text
+    extract_storm_motion = lambda alert: None
+    get_motion_for_broadcast = lambda alert: None
+
+# Import alert expiration tracking
+try:
+    from alert_expiration import check_for_expirations, get_expiration_announcement, get_expiration_tracker
+    EXPIRATION_TRACKING_AVAILABLE = True
+    print("✓ Alert expiration tracker loaded")
+except ImportError as e:
+    print(f"⚠ Expiration tracking not available: {e}")
+    EXPIRATION_TRACKING_AVAILABLE = False
+    check_for_expirations = lambda alerts: []
+    get_expiration_announcement = lambda expired: None
+    get_expiration_tracker = lambda: None
+
+# Import holiday greeting system
+try:
+    from holiday_greetings import add_holiday_greeting_to_broadcast, get_current_holiday_greeting
+    HOLIDAY_SYSTEM_AVAILABLE = True
+    print("✓ Holiday greeting system loaded")
+except ImportError as e:
+    print(f"⚠ Holiday system not available: {e}")
+    HOLIDAY_SYSTEM_AVAILABLE = False
+    add_holiday_greeting_to_broadcast = lambda text, btype: text
+    get_current_holiday_greeting = lambda: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1185,6 +1220,13 @@ def api_broadcast_scheduled():
         current_minute = datetime.now().minute
         local_area = request.args.get('local_area', 'North Alabama')
         
+        # 🆕 CHECK FOR ALERT EXPIRATIONS
+        expired_alerts = []
+        if EXPIRATION_TRACKING_AVAILABLE:
+            expired_alerts = check_for_expirations(alerts)
+            if expired_alerts:
+                print(f"✓ Detected {len(expired_alerts)} expired alerts")
+        
         broadcast_data = {
             'success': True,
             'timestamp': datetime.now().isoformat(),
@@ -1194,9 +1236,14 @@ def api_broadcast_scheduled():
             'content': []
         }
         
-        # :00 - Regional Briefing (North Alabama & Southern Tennessee)
+        # :00 - Regional Briefing (North Alabama & Southern Tennessee) WITH HOLIDAY GREETINGS!
         if current_minute == 0:
             briefing = get_regional_briefing(alerts, scored)
+            
+            # 🆕 ADD HOLIDAY GREETING IF APPLICABLE
+            if HOLIDAY_SYSTEM_AVAILABLE:
+                briefing = add_holiday_greeting_to_broadcast(briefing, 'regional_briefing')
+            
             broadcast_data['broadcast_type'] = 'regional_briefing'
             broadcast_data['content'].append({
                 'type': 'commentary',
@@ -1229,9 +1276,14 @@ def api_broadcast_scheduled():
                         announcement = get_announcement_for_alert(alert, threat_score) if VOICE_STYLES_AVAILABLE else None
                         
                         if announcement:
+                            # 🆕 ADD STORM MOTION TO ANNOUNCEMENT
+                            announcement_text = announcement['text']
+                            if STORM_MOTION_AVAILABLE:
+                                announcement_text = add_motion_to_announcement(announcement_text, alert)
+                            
                             broadcast_data['content'].append({
                                 'type': 'alert',
-                                'text': announcement['text'],
+                                'text': announcement_text,
                                 'voice_style': announcement['style'],
                                 'threat_score': threat_score,
                                 'alert_info': {
@@ -1321,6 +1373,18 @@ def api_broadcast_scheduled():
                     
                     if city_briefing is None:
                         print(f"❌ All {max_city_attempts} city attempts failed, skipping city briefing")
+                
+                # 🆕 ANNOUNCE ALERT EXPIRATIONS IF ANY
+                if EXPIRATION_TRACKING_AVAILABLE and expired_alerts:
+                    expiration_text = get_expiration_announcement(expired_alerts)
+                    if expiration_text:
+                        broadcast_data['content'].append({
+                            'type': 'expiration',
+                            'text': expiration_text,
+                            'voice_style': 'calm',
+                            'duration_estimate': '5-10 seconds'
+                        })
+                        print(f"✓ Added expiration announcement for {len(expired_alerts)} alerts")
                 
                 # Check for pre-alerts
                 if PRE_ALERT_AVAILABLE:
@@ -1434,6 +1498,18 @@ def api_broadcast_scheduled():
                 'text': story,
                 'duration_estimate': '30-60 seconds'
             })
+            
+            # 🆕 ANNOUNCE ALERT EXPIRATIONS IF ANY
+            if EXPIRATION_TRACKING_AVAILABLE and expired_alerts:
+                expiration_text = get_expiration_announcement(expired_alerts)
+                if expiration_text:
+                    broadcast_data['content'].append({
+                        'type': 'expiration',
+                        'text': expiration_text,
+                        'voice_style': 'calm',
+                        'duration_estimate': '5-10 seconds'
+                    })
+                    print(f"✓ Added expiration announcement for {len(expired_alerts)} alerts")
         
         # Not a scheduled time
         else:
