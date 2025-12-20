@@ -576,6 +576,116 @@ def api_ml_status():
     })
 
 # ----------------------------------------------------------------------
+# Learning System Endpoints (SQLite)
+# ----------------------------------------------------------------------
+@app.get('/api/ml/history')
+def api_ml_history():
+    """Get forecast history - shows what bot has learned"""
+    if not FORECAST_SYSTEM_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Learning system not available - forecast_db.py not loaded'
+        }), 503
+    
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        location = request.args.get('location', None, type=str)
+        
+        history = get_forecast_history(limit=limit, location=location)
+        formatted = format_history_for_frontend(history)
+        
+        return jsonify({
+            'success': True,
+            'count': len(history),
+            'history': formatted,
+            'message': f'Retrieved {len(history)} forecast records'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.get('/api/ml/accuracy')
+def api_ml_accuracy():
+    """Get learning accuracy statistics"""
+    if not FORECAST_SYSTEM_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Learning system not available - forecast_db.py not loaded'
+        }), 503
+    
+    try:
+        days = request.args.get('days', 30, type=int)
+        stats = get_accuracy_stats(days=days)
+        
+        return jsonify({
+            'success': True,
+            'period_days': days,
+            **stats,
+            'message': f'Accuracy stats for last {days} days'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.get('/api/ml/learning-status')
+def api_learning_status():
+    """Get overall learning status - is bot getting smarter?"""
+    if not FORECAST_SYSTEM_AVAILABLE:
+        return jsonify({
+            'success': False,
+            'error': 'Learning system not available',
+            'learning': False
+        })
+    
+    try:
+        stats = get_accuracy_stats(days=30)
+        history = get_forecast_history(limit=10)
+        
+        total = stats.get('total_forecasts', 0)
+        verified = stats.get('verified_count', 0)
+        accuracy = stats.get('avg_accuracy', 0)
+        improving = stats.get('improving', False)
+        
+        # Determine learning stage
+        if total == 0:
+            stage = 'WAITING FOR DATA'
+            message = 'Bot is ready to start learning from weather events'
+        elif total < 10:
+            stage = 'GATHERING DATA'
+            message = f'Early stage: {total}/100 forecasts collected'
+        elif total < 100:
+            stage = 'LEARNING PATTERNS'
+            message = f'Building knowledge: {total}/100 forecasts for baseline'
+        elif total < 500:
+            stage = 'IMPROVING ACCURACY'
+            message = f'Getting smarter: {total} forecasts analyzed'
+        else:
+            stage = 'EXPERT LEVEL'
+            message = f'Highly trained: {total} forecasts analyzed'
+        
+        return jsonify({
+            'success': True,
+            'learning': True,
+            'stage': stage,
+            'message': message,
+            'total_forecasts': total,
+            'verified_forecasts': verified,
+            'current_accuracy': f"{accuracy*100:.1f}%" if accuracy else "N/A",
+            'improving': improving,
+            'recent_predictions': len(history)
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'learning': False
+        }), 500
+
+# ----------------------------------------------------------------------
 # Pre-Alert Prediction System Endpoints
 # ----------------------------------------------------------------------
 @app.get('/api/pre-alerts')
