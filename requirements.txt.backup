@@ -1,9 +1,0 @@
-flask
-flask-cors
-requests
-python-dotenv
-numpy
-scikit-learn
-gunicorn
-gevent
-psycopg2-binary
