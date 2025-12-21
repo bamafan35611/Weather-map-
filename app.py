@@ -353,6 +353,28 @@ class AlertAnnouncementManager:
 # Global alert manager instance
 alert_manager = AlertAnnouncementManager()
 
+# =============================================================================
+# 🔧 ML MODEL AUTO-FIX - Runs on module import (works with Gunicorn!)
+# This MUST run before Flask app is created to fix the model before any predictions
+# =============================================================================
+print("\n" + "=" * 70)
+print("🔧 CHECKING ML MODEL COMPATIBILITY (Module Import)")
+print("=" * 70)
+
+try:
+    from auto_fix_ml import check_and_fix_model
+    model_ok = check_and_fix_model()
+    if model_ok:
+        print("✅ ML model is compatible and ready")
+    else:
+        print("ℹ️ ML model will be trained on first prediction")
+except Exception as e:
+    print(f"⚠️ Auto-fix check failed: {e}")
+    print("Will attempt to train new model on first prediction...")
+
+print("=" * 70 + "\n")
+# =============================================================================
+
 app = Flask(__name__, static_folder='static')
 
 # Enable CORS for all routes and origins
@@ -1843,21 +1865,13 @@ start_verification_loop()
 # Entrypoint
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
-    # 🔧 AUTO-FIX ML MODEL ON STARTUP (for Render Free tier)
-    print("\n" + "=" * 70)
-    print("🔧 CHECKING ML MODEL COMPATIBILITY")
+    # NOTE: This block only runs when executing: python app.py
+    # It does NOT run with Gunicorn (which is what Render uses)
+    # ML model auto-fix is handled above at module import level
+    
     print("=" * 70)
-    
-    try:
-        from auto_fix_ml import check_and_fix_model
-        model_ok = check_and_fix_model()
-        if not model_ok:
-            print("ℹ️ Will train new model on first prediction")
-    except Exception as e:
-        print(f"⚠️ Could not run auto-fix: {e}")
-        print("Will attempt to train new model if needed...")
-    
-    print("=" * 70 + "\n")
+    print("🚀 RUNNING IN DEVELOPMENT MODE (python app.py)")
+    print("=" * 70)
     
     port = int(os.environ.get('PORT', '8000'))
     app.run(host='0.0.0.0', port=port)
