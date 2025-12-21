@@ -442,26 +442,35 @@ def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, st
                     temp_f = round((temp_c * 9/5) + 32)
                     conditions_parts.append(f"Currently {temp_f} degrees")
                 
-                # Wind
-                wind_ms = current_obs.get('windSpeed', {}).get('value')
-                if wind_ms is not None and wind_ms > 0:
+                # Wind - FIXED to prevent announcing stale gusts when calm
+                wind_speed_data = current_obs.get('windSpeed', {})
+                wind_ms = wind_speed_data.get('value')
+                
+                # Convert to mph if we have data
+                if wind_ms is not None:
                     wind_mph = round(wind_ms * 2.237)
-                    wind_dir = current_obs.get('windDirection', {}).get('value')
                     
-                    if wind_dir is not None:
-                        direction = fetcher._degrees_to_cardinal(wind_dir)
-                        wind_text = f"winds {direction} at {wind_mph}"
-                    else:
-                        wind_text = f"winds at {wind_mph}"
-                    
-                    # Check for gusts
-                    gust_ms = current_obs.get('windGust', {}).get('value')
-                    if gust_ms is not None:
-                        gust_mph = round(gust_ms * 2.237)
-                        if gust_mph > wind_mph + 5:
-                            wind_text += f" gusting to {gust_mph}"
-                    
-                    conditions_parts.append(wind_text + " miles per hour")
+                    # Only announce if wind speed is significant (>= 3 mph)
+                    # Below 3 mph is considered calm - don't announce wind at all
+                    if wind_mph >= 3:
+                        wind_dir = current_obs.get('windDirection', {}).get('value')
+                        
+                        if wind_dir is not None:
+                            direction = fetcher._degrees_to_cardinal(wind_dir)
+                            wind_text = f"winds {direction} at {wind_mph}"
+                        else:
+                            wind_text = f"winds at {wind_mph}"
+                        
+                        # Check for gusts - but ONLY if sustained wind exists
+                        gust_ms = current_obs.get('windGust', {}).get('value')
+                        if gust_ms is not None:
+                            gust_mph = round(gust_ms * 2.237)
+                            # Only mention gusts if significantly higher than sustained
+                            if gust_mph > wind_mph + 5:
+                                wind_text += f" gusting to {gust_mph}"
+                        
+                        conditions_parts.append(wind_text + " miles per hour")
+                    # If wind < 3 mph, we skip wind announcement entirely (calm conditions)
                 
                 if conditions_parts:
                     briefing_parts.append(", ".join(conditions_parts) + ".")
