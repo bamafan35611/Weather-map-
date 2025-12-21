@@ -162,10 +162,15 @@ class PreAlertPredictor:
             # Model expects: [pred_type, severity, confidence, lat, lon, hour, weekday, temp, humidity, wind]
             now = datetime.utcnow()
             
+            # Safety: Ensure radar_analysis has valid confidence (not None)
+            radar_confidence = radar_analysis.get('confidence', 50)
+            if radar_confidence is None:
+                radar_confidence = 50  # Default to 50% if None
+            
             features = [
                 1,  # Default to severe thunderstorm type
                 2,  # Assume severe severity
-                radar_analysis['confidence'] / 100.0,
+                radar_confidence / 100.0,  # Safe now - cannot be None
                 lat,
                 lon,
                 now.hour / 24.0,
@@ -187,7 +192,8 @@ class PreAlertPredictor:
                 alert_probability = 75.0 if prediction == 1 else 25.0
             
             # Combine ML probability with radar analysis confidence
-            final_confidence = (alert_probability + radar_analysis['confidence']) / 2
+            # Safety: Use the radar_confidence variable we already validated
+            final_confidence = (alert_probability + radar_confidence) / 2
             
             # Only issue prediction if confidence is high enough
             if final_confidence < 70:
