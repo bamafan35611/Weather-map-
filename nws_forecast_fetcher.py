@@ -446,9 +446,16 @@ def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, st
                 wind_speed_data = current_obs.get('windSpeed', {})
                 wind_ms = wind_speed_data.get('value')
                 
+                # DEBUG: Log what we're getting from NWS
+                print(f"🌬️ DEBUG {city_name} - Raw wind data from NWS:")
+                print(f"   windSpeed (m/s): {wind_ms}")
+                print(f"   windGust (m/s): {current_obs.get('windGust', {}).get('value')}")
+                print(f"   windDirection: {current_obs.get('windDirection', {}).get('value')}")
+                
                 # Convert to mph if we have data
                 if wind_ms is not None:
                     wind_mph = round(wind_ms * 2.237)
+                    print(f"   Converted wind speed: {wind_mph} mph")
                     
                     # Only announce if wind speed is significant (>= 3 mph)
                     # Below 3 mph is considered calm - don't announce wind at all
@@ -465,6 +472,7 @@ def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, st
                         gust_ms = current_obs.get('windGust', {}).get('value')
                         if gust_ms is not None:
                             gust_mph = round(gust_ms * 2.237)
+                            print(f"   Converted wind gust: {gust_mph} mph")
                             # Only mention gusts if significantly higher than sustained
                             if gust_mph > wind_mph + 5:
                                 wind_text += f" gusting to {gust_mph}"
