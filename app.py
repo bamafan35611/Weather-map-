@@ -178,6 +178,40 @@ except ImportError as e:
     add_holiday_greeting_to_broadcast = lambda text, btype: text
     get_current_holiday_greeting = lambda: None
 
+# Import temperature trend tracking
+try:
+    from temperature_trends import record_temperature, get_temperature_announcement
+    TEMPERATURE_TRENDS_AVAILABLE = True
+    print("✓ Temperature trend tracker loaded")
+except ImportError as e:
+    print(f"⚠ Temperature trends not available: {e}")
+    TEMPERATURE_TRENDS_AVAILABLE = False
+    record_temperature = lambda location, temp, **kwargs: None
+    get_temperature_announcement = lambda location: None
+
+# Import SPC multi-day outlooks
+try:
+    from spc_outlooks import get_day2_outlook, get_day3_outlook, get_extended_outlook
+    SPC_OUTLOOKS_AVAILABLE = True
+    print("✓ SPC multi-day outlooks loaded")
+except ImportError as e:
+    print(f"⚠ SPC outlooks not available: {e}")
+    SPC_OUTLOOKS_AVAILABLE = False
+    get_day2_outlook = lambda: None
+    get_day3_outlook = lambda: None
+    get_extended_outlook = lambda: None
+
+# Import hail size translator
+try:
+    from hail_translator import get_hail_announcement, add_hail_info_to_alert
+    HAIL_TRANSLATOR_AVAILABLE = True
+    print("✓ Hail size translator loaded")
+except ImportError as e:
+    print(f"⚠ Hail translator not available: {e}")
+    HAIL_TRANSLATOR_AVAILABLE = False
+    get_hail_announcement = lambda text: None
+    add_hail_info_to_alert = lambda text: text
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1250,6 +1284,18 @@ def api_broadcast_scheduled():
                 'text': briefing,
                 'duration_estimate': '45-60 seconds'
             })
+            
+            # 🆕 ADD SPC MULTI-DAY OUTLOOK
+            if SPC_OUTLOOKS_AVAILABLE:
+                outlook_announcement = get_extended_outlook()
+                if outlook_announcement:
+                    broadcast_data['content'].append({
+                        'type': 'outlook',
+                        'text': outlook_announcement,
+                        'voice_style': 'concerned',
+                        'duration_estimate': '10-15 seconds'
+                    })
+                    print(f"✓ Added SPC outlook to :00 broadcast")
         
         # :15 - Top Alerts with Voice Styles (🔧 NOW WITH COOLDOWN!)
         elif current_minute == 15:
@@ -1280,6 +1326,13 @@ def api_broadcast_scheduled():
                             announcement_text = announcement['text']
                             if STORM_MOTION_AVAILABLE:
                                 announcement_text = add_motion_to_announcement(announcement_text, alert)
+                            
+                            # 🆕 ADD HAIL SIZE INFORMATION
+                            if HAIL_TRANSLATOR_AVAILABLE:
+                                alert_description = alert.get('description', '')
+                                hail_info = get_hail_announcement(alert_description)
+                                if hail_info:
+                                    announcement_text = f"{announcement_text} {hail_info}"
                             
                             broadcast_data['content'].append({
                                 'type': 'alert',
@@ -1354,6 +1407,27 @@ def api_broadcast_scheduled():
                                 attempts += 1
                             else:
                                 # Success!
+                                # 🆕 ADD TEMPERATURE TREND IF AVAILABLE
+                                if TEMPERATURE_TRENDS_AVAILABLE:
+                                    location_name = f"{random_city['name']}, {random_city['state']}"
+                                    
+                                    # Try to extract and record current temperature from city_briefing
+                                    # The briefing format is: "City, State. Currently X degrees..."
+                                    try:
+                                        import re
+                                        temp_match = re.search(r'currently (\d+) degrees', city_briefing.lower())
+                                        if temp_match:
+                                            current_temp = float(temp_match.group(1))
+                                            record_temperature(location_name, current_temp)
+                                            
+                                            # Get trend announcement
+                                            temp_trend = get_temperature_announcement(location_name)
+                                            if temp_trend:
+                                                city_briefing = f"{city_briefing} {temp_trend}"
+                                                print(f"✓ Added temperature trend to city briefing")
+                                    except Exception as e:
+                                        print(f"Could not process temperature trend: {e}")
+                                
                                 broadcast_data['content'].append({
                                     'type': 'local_city_briefing',
                                     'text': city_briefing,
