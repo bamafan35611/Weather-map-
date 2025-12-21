@@ -1843,5 +1843,21 @@ start_verification_loop()
 # Entrypoint
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
+    # 🔧 AUTO-FIX ML MODEL ON STARTUP (for Render Free tier)
+    print("\n" + "=" * 70)
+    print("🔧 CHECKING ML MODEL COMPATIBILITY")
+    print("=" * 70)
+    
+    try:
+        from auto_fix_ml import check_and_fix_model
+        model_ok = check_and_fix_model()
+        if not model_ok:
+            print("ℹ️ Will train new model on first prediction")
+    except Exception as e:
+        print(f"⚠️ Could not run auto-fix: {e}")
+        print("Will attempt to train new model if needed...")
+    
+    print("=" * 70 + "\n")
+    
     port = int(os.environ.get('PORT', '8000'))
     app.run(host='0.0.0.0', port=port)
