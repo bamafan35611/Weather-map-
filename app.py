@@ -373,6 +373,17 @@ except Exception as e:
     print("Will attempt to train new model on first prediction...")
 
 print("=" * 70 + "\n")
+
+# =============================================================================
+# 🔥💀 ULTRA-NUCLEAR MODEL KILLER - Hunts and destroys incompatible models
+# This runs in the background and continuously patrols for bad models
+# =============================================================================
+try:
+    from model_killer import start_model_killer
+    start_model_killer()
+    print("🔥 ULTRA-NUCLEAR MODE: Model killer is active and hunting\n")
+except Exception as e:
+    print(f"⚠️ Model killer failed to start: {e}\n")
 # =============================================================================
 
 app = Flask(__name__, static_folder='static')
