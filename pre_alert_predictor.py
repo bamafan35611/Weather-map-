@@ -25,11 +25,53 @@ class PreAlertPredictor:
     def load_model(self, model_path):
         """Load the trained ML model"""
         try:
+            # Check if model exists
+            if not os.path.exists(model_path):
+                logger.info("No model file found")
+                self.model = None
+                return
+            
+            # Load the model
             with open(model_path, 'rb') as f:
-                self.model = pickle.load(f)
-            logger.info("✓ Pre-alert model loaded")
+                loaded_model = pickle.load(f)
+            
+            # CRITICAL: Validate model has correct number of features
+            # If it's a dict with metadata, check expected_features
+            if isinstance(loaded_model, dict):
+                expected_features = loaded_model.get('expected_features', 0)
+                if expected_features == 10:
+                    self.model = loaded_model
+                    logger.info(f"✓ Pre-alert model loaded ({expected_features} features)")
+                else:
+                    logger.error(f"⚠️ Model has {expected_features} features, need 10 - rejecting")
+                    self.model = None
+                    # Delete the incompatible model
+                    try:
+                        os.remove(model_path)
+                        logger.info("💀 Deleted incompatible model")
+                    except:
+                        pass
+            else:
+                # Old format model - also check if it expects wrong number of features
+                try:
+                    import numpy as np
+                    test_input = np.zeros((1, 10))  # Try with 10 features
+                    _ = loaded_model.predict(test_input)
+                    # If this succeeds, model is compatible
+                    self.model = loaded_model
+                    logger.info("✓ Pre-alert model loaded (legacy format)")
+                except Exception as e:
+                    logger.error(f"⚠️ Model failed compatibility test: {e} - rejecting")
+                    self.model = None
+                    # Delete the incompatible model
+                    try:
+                        os.remove(model_path)
+                        logger.info("💀 Deleted incompatible legacy model")
+                    except:
+                        pass
         except Exception as e:
             logger.error(f"Could not load model: {e}")
+            self.model = None
     
     def fetch_current_conditions(self, lat: float, lon: float) -> Dict:
         """Fetch current atmospheric conditions from NWS"""

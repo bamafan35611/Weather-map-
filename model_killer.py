@@ -9,7 +9,7 @@ import threading
 import pickle
 
 MODEL_PATH = '/data/weather_model.pkl'
-KILL_INTERVAL = 10  # Check every 10 seconds
+KILL_INTERVAL = 3  # Check every 3 seconds - ULTRA AGGRESSIVE
 RUNNING = True
 
 def is_model_incompatible():
@@ -60,35 +60,43 @@ def model_killer_loop():
     
     print("=" * 70)
     print("🔥 MODEL KILLER: Active and hunting...")
+    print(f"🔥 PATROL INTERVAL: Every {KILL_INTERVAL} seconds")
     print("=" * 70)
     
     consecutive_good = 0
+    patrol_count = 0
     
     while RUNNING:
         try:
+            patrol_count += 1
+            
             # Check if model exists and is bad
             if os.path.exists(MODEL_PATH):
                 if is_model_incompatible():
-                    print(f"\n🚨 MODEL KILLER: Found incompatible model!")
+                    print(f"\n🚨 MODEL KILLER (Patrol #{patrol_count}): Found incompatible model!")
                     if kill_incompatible_model():
                         consecutive_good = 0
                         print("💀 MODEL KILLER: Threat eliminated. Continuing patrol...")
                 else:
                     consecutive_good += 1
                     if consecutive_good == 1:
-                        print(f"\n✅ MODEL KILLER: Compatible model detected!")
+                        print(f"\n✅ MODEL KILLER (Patrol #{patrol_count}): Compatible model detected!")
                         print("✅ MODEL KILLER: Mission accomplished - standing down")
                         RUNNING = False
                         break
+            else:
+                # No model yet
+                if patrol_count % 10 == 0:  # Print every 30 seconds
+                    print(f"🔍 MODEL KILLER (Patrol #{patrol_count}): No model yet, waiting...")
             
             time.sleep(KILL_INTERVAL)
             
         except Exception as e:
-            print(f"⚠️ MODEL KILLER: Error in patrol: {e}")
+            print(f"⚠️ MODEL KILLER: Error in patrol #{patrol_count}: {e}")
             time.sleep(KILL_INTERVAL)
     
     print("\n" + "=" * 70)
-    print("✅ MODEL KILLER: Terminated - compatible model is safe")
+    print(f"✅ MODEL KILLER: Terminated after {patrol_count} patrols - compatible model is safe")
     print("=" * 70 + "\n")
 
 def start_model_killer():
