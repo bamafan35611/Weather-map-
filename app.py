@@ -212,6 +212,58 @@ except ImportError as e:
     get_hail_announcement = lambda text: None
     add_hail_info_to_alert = lambda text: text
 
+# Import backup grid system
+try:
+    from backup_grids import get_forecast_with_backup, get_backup_grid_system
+    BACKUP_GRIDS_AVAILABLE = True
+    print("✓ Backup grid system loaded")
+except ImportError as e:
+    print(f"⚠ Backup grids not available: {e}")
+    BACKUP_GRIDS_AVAILABLE = False
+    get_forecast_with_backup = lambda location, func, *args, **kwargs: func(*args, **kwargs)
+
+# Import city rotation tracker
+try:
+    from city_rotation import get_rotation_tracker, record_city_mention, get_available_cities, is_city_available
+    CITY_ROTATION_AVAILABLE = True
+    print("✓ City rotation tracker loaded")
+except ImportError as e:
+    print(f"⚠ City rotation not available: {e}")
+    CITY_ROTATION_AVAILABLE = False
+    record_city_mention = lambda city, state, btype: None
+    get_available_cities = lambda cities: cities
+    is_city_available = lambda city: True
+
+# Import forecast accuracy announcements
+try:
+    from accuracy_announcer import get_accuracy_announcement, get_accuracy_announcer
+    ACCURACY_ANNOUNCEMENTS_AVAILABLE = True
+    print("✓ Forecast accuracy announcements loaded")
+except ImportError as e:
+    print(f"⚠ Accuracy announcements not available: {e}")
+    ACCURACY_ANNOUNCEMENTS_AVAILABLE = False
+    get_accuracy_announcement = lambda force=False: None
+
+# Import weather history comparisons
+try:
+    from weather_history import get_temperature_context, get_history_comparer
+    WEATHER_HISTORY_AVAILABLE = True
+    print("✓ Weather history comparisons loaded")
+except ImportError as e:
+    print(f"⚠ Weather history not available: {e}")
+    WEATHER_HISTORY_AVAILABLE = False
+    get_temperature_context = lambda city, temp, is_high=True: None
+
+# Import wind gust announcements
+try:
+    from wind_gust_announcer import get_wind_announcement
+    WIND_GUST_AVAILABLE = True
+    print("✓ Wind gust announcements loaded")
+except ImportError as e:
+    print(f"⚠ Wind gusts not available: {e}")
+    WIND_GUST_AVAILABLE = False
+    get_wind_announcement = lambda text: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1296,6 +1348,18 @@ def api_broadcast_scheduled():
                         'duration_estimate': '10-15 seconds'
                     })
                     print(f"✓ Added SPC outlook to :00 broadcast")
+            
+            # 🆕 ADD FORECAST ACCURACY ANNOUNCEMENT
+            if ACCURACY_ANNOUNCEMENTS_AVAILABLE:
+                accuracy_announcement = get_accuracy_announcement()
+                if accuracy_announcement:
+                    broadcast_data['content'].append({
+                        'type': 'accuracy',
+                        'text': accuracy_announcement,
+                        'voice_style': 'professional',
+                        'duration_estimate': '15-20 seconds'
+                    })
+                    print(f"✓ Added accuracy announcement to :00 broadcast")
         
         # :15 - Top Alerts with Voice Styles (🔧 NOW WITH COOLDOWN!)
         elif current_minute == 15:
@@ -1333,6 +1397,13 @@ def api_broadcast_scheduled():
                                 hail_info = get_hail_announcement(alert_description)
                                 if hail_info:
                                     announcement_text = f"{announcement_text} {hail_info}"
+                            
+                            # 🆕 ADD WIND GUST INFORMATION
+                            if WIND_GUST_AVAILABLE:
+                                alert_description = alert.get('description', '')
+                                wind_info = get_wind_announcement(alert_description)
+                                if wind_info:
+                                    announcement_text = f"{announcement_text} {wind_info}"
                             
                             broadcast_data['content'].append({
                                 'type': 'alert',
@@ -1388,6 +1459,12 @@ def api_broadcast_scheduled():
                     attempts = 0
                     max_city_attempts = 3  # Try up to 3 different cities
                     
+                    # 🆕 FILTER CITIES THROUGH ROTATION TRACKER
+                    if CITY_ROTATION_AVAILABLE:
+                        from local_cities import ALL_CITIES
+                        available_cities = get_available_cities(ALL_CITIES)
+                        print(f"✓ City rotation: {len(available_cities)} cities available (filtered {len(ALL_CITIES) - len(available_cities)} on cooldown)")
+                    
                     while city_briefing is None and attempts < max_city_attempts:
                         try:
                             random_city = get_random_city()
@@ -1425,8 +1502,28 @@ def api_broadcast_scheduled():
                                             if temp_trend:
                                                 city_briefing = f"{city_briefing} {temp_trend}"
                                                 print(f"✓ Added temperature trend to city briefing")
+                                            
+                                            # 🆕 ADD WEATHER HISTORY CONTEXT
+                                            if WEATHER_HISTORY_AVAILABLE:
+                                                history_context = get_temperature_context(
+                                                    random_city['name'], 
+                                                    current_temp, 
+                                                    is_high=True
+                                                )
+                                                if history_context:
+                                                    city_briefing = f"{city_briefing} {history_context}"
+                                                    print(f"✓ Added weather history context to city briefing")
                                     except Exception as e:
                                         print(f"Could not process temperature trend: {e}")
+                                
+                                # 🆕 RECORD CITY MENTION FOR ROTATION TRACKING
+                                if CITY_ROTATION_AVAILABLE:
+                                    record_city_mention(
+                                        random_city['name'], 
+                                        random_city['state'], 
+                                        'city_briefing'
+                                    )
+                                    print(f"✓ Recorded city mention: {random_city['name']}")
                                 
                                 broadcast_data['content'].append({
                                     'type': 'local_city_briefing',
