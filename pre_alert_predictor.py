@@ -3,6 +3,7 @@ pre_alert_predictor.py - NorthBamaWX Pre-Alert Prediction System
 Predicts severe weather alerts 5-15 minutes before NWS issues them
 """
 
+import os
 import requests
 import json
 import pickle
