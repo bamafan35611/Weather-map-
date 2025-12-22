@@ -284,6 +284,16 @@ except ImportError as e:
     AIR_QUALITY_AVAILABLE = False
     get_aqi_announcement = lambda **kwargs: None
 
+# Import weekend outlook (Phase 2)
+try:
+    from weekend_outlook import get_weekend_announcement
+    WEEKEND_OUTLOOK_AVAILABLE = True
+    print("✓ Weekend outlook loaded")
+except ImportError as e:
+    print(f"⚠ Weekend outlook not available: {e}")
+    WEEKEND_OUTLOOK_AVAILABLE = False
+    get_weekend_announcement = lambda: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1402,6 +1412,18 @@ def api_broadcast_scheduled():
                         'duration_estimate': '15-20 seconds'
                     })
                     print(f"✓ Added AQI announcement ({aqi_data['category']}, AQI: {aqi_data['aqi_value']})")
+            
+            # 🆕 PHASE 2: ADD WEEKEND OUTLOOK (Friday PM & Saturday)
+            if WEEKEND_OUTLOOK_AVAILABLE:
+                weekend_announcement = get_weekend_announcement()
+                if weekend_announcement:
+                    broadcast_data['content'].append({
+                        'type': 'weekend_outlook',
+                        'text': weekend_announcement,
+                        'voice_style': 'professional',
+                        'duration_estimate': '15-20 seconds'
+                    })
+                    print(f"✓ Added weekend outlook to :00 broadcast")
             
             # 🆕 ADD SPC MULTI-DAY OUTLOOK
             if SPC_OUTLOOKS_AVAILABLE:
