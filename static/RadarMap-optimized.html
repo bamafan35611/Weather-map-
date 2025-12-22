@@ -1109,7 +1109,7 @@ async function runTopOfHourUpdate() {
         startBriefing(); // Mark briefing as in progress
         
         console.log('[15min :00] Fetching from Flask API...');
-        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
@@ -1148,7 +1148,7 @@ async function runQuarterPastUpdate() {
         startBriefing(); // Mark briefing as in progress
         
         console.log('[15min :15] Fetching from Flask API...');
-        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
@@ -1200,7 +1200,7 @@ async function runQuarterTillUpdate() {
         startBriefing(); // Mark briefing as in progress
         
         console.log('[15min :45] Fetching from Flask API...');
-        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
