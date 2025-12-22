@@ -310,7 +310,7 @@ class AlertAnnouncementManager:
         
         # Configuration
         self.INITIAL_COOLDOWN = 0  # Announce new alerts immediately
-        self.REPEAT_COOLDOWN = 1800  # 30 minutes before re-announcing
+        self.REPEAT_COOLDOWN = 900  # 15 minutes before re-announcing
         self.UPDATE_COOLDOWN = 300  # 5 minutes after update announcement
         
         print("✓ Alert announcement manager initialized")
@@ -352,7 +352,7 @@ class AlertAnnouncementManager:
         # Check if enough time passed for re-announcement
         time_since_last = (current_time - self.announced_alerts[alert_id]).total_seconds()
         if time_since_last >= self.REPEAT_COOLDOWN:
-            print(f"✓ Re-announcing (30+ min passed): {alert.get('event')}")
+            print(f"✓ Re-announcing (15+ min passed): {alert.get('event')}")
             self.announced_alerts[alert_id] = current_time
             return True
         
