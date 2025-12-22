@@ -274,6 +274,16 @@ except ImportError as e:
     STORM_REPORTS_AVAILABLE = False
     get_storm_reports_summary = lambda **kwargs: None
 
+# Import air quality index (Phase 2)
+try:
+    from air_quality import get_aqi_announcement
+    AIR_QUALITY_AVAILABLE = True
+    print("✓ Air quality monitoring loaded")
+except ImportError as e:
+    print(f"⚠ Air quality not available: {e}")
+    AIR_QUALITY_AVAILABLE = False
+    get_aqi_announcement = lambda **kwargs: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1379,6 +1389,19 @@ def api_broadcast_scheduled():
                 'text': briefing,
                 'duration_estimate': '45-60 seconds'
             })
+            
+            # 🆕 PHASE 2: ADD AIR QUALITY INDEX
+            if AIR_QUALITY_AVAILABLE:
+                aqi_data = get_aqi_announcement()
+                if aqi_data:
+                    broadcast_data['content'].append({
+                        'type': 'air_quality',
+                        'text': aqi_data['text'],
+                        'voice_style': aqi_data['voice_style'],
+                        'aqi_value': aqi_data['aqi_value'],
+                        'duration_estimate': '15-20 seconds'
+                    })
+                    print(f"✓ Added AQI announcement ({aqi_data['category']}, AQI: {aqi_data['aqi_value']})")
             
             # 🆕 ADD SPC MULTI-DAY OUTLOOK
             if SPC_OUTLOOKS_AVAILABLE:
