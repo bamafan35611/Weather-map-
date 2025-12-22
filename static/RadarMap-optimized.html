@@ -1106,12 +1106,15 @@ async function runTopOfHourUpdate() {
             return;
         }
 
+        startBriefing(); // Mark briefing as in progress
+        
         console.log('[15min :00] Fetching from Flask API...');
         const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
             console.log('[15min :00] No broadcast scheduled');
+            endBriefing(); // End briefing
             return;
         }
         
@@ -1126,8 +1129,11 @@ async function runTopOfHourUpdate() {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
+        
+        endBriefing(); // End briefing after all speech
     } catch (err) {
         console.error('[15min :00] Error:', err);
+        endBriefing(); // End briefing on error
     }
 }
 
@@ -1139,12 +1145,15 @@ async function runQuarterPastUpdate() {
             return;
         }
 
+        startBriefing(); // Mark briefing as in progress
+        
         console.log('[15min :15] Fetching from Flask API...');
         const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
             console.log('[15min :15] No broadcast scheduled');
+            endBriefing(); // End briefing
             return;
         }
         
@@ -1159,15 +1168,26 @@ async function runQuarterPastUpdate() {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
+        
+        endBriefing(); // End briefing after all speech
     } catch (err) {
         console.error('[15min :15] Error:', err);
+        endBriefing(); // End briefing on error
     }
+}
 }
 
 // :30 - Half Past: Detailed Regional Update (calls existing function)
 async function runHalfPastUpdate() {
     console.log('[15min :30] Triggering detailed regional update');
-    await runLocalNorthAlabamaBroadcast();
+    startBriefing(); // Mark briefing as in progress
+    try {
+        await runLocalNorthAlabamaBroadcast();
+        endBriefing(); // End briefing after speech
+    } catch (err) {
+        console.error('[15min :30] Error:', err);
+        endBriefing(); // End briefing on error
+    }
 }
 
 // :45 - Quarter Till Update - USES FLASK API
@@ -1178,12 +1198,15 @@ async function runQuarterTillUpdate() {
             return;
         }
 
+        startBriefing(); // Mark briefing as in progress
+        
         console.log('[15min :45] Fetching from Flask API...');
         const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
             console.log('[15min :45] No broadcast scheduled');
+            endBriefing(); // End briefing
             return;
         }
         
@@ -1198,8 +1221,11 @@ async function runQuarterTillUpdate() {
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
         }
+        
+        endBriefing(); // End briefing after all speech
     } catch (err) {
         console.error('[15min :45] Error:', err);
+        endBriefing(); // End briefing on error
     }
 }
 
