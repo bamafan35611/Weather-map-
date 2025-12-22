@@ -264,6 +264,16 @@ except ImportError as e:
     WIND_GUST_AVAILABLE = False
     get_wind_announcement = lambda text: None
 
+# Import storm reports (Phase 2)
+try:
+    from storm_reports import get_storm_reports_summary
+    STORM_REPORTS_AVAILABLE = True
+    print("✓ Storm reports system loaded")
+except ImportError as e:
+    print(f"⚠ Storm reports not available: {e}")
+    STORM_REPORTS_AVAILABLE = False
+    get_storm_reports_summary = lambda **kwargs: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1485,6 +1495,21 @@ def api_broadcast_scheduled():
                         'text': 'Weather conditions continue across monitored areas. No new alerts at this time.',
                         'voice_style': 'calm'
                     })
+                
+                # 🆕 PHASE 2: ADD STORM REPORTS (before city briefing)
+                if STORM_REPORTS_AVAILABLE:
+                    storm_summary = get_storm_reports_summary(
+                        hours_back=24,      # Search last 24 hours  
+                        max_age_hours=6     # Only announce last 6 hours
+                    )
+                    if storm_summary:
+                        broadcast_data['content'].append({
+                            'type': 'storm_reports',
+                            'text': storm_summary,
+                            'voice_style': 'urgent',
+                            'duration_estimate': '15-20 seconds'
+                        })
+                        print(f"✓ Added storm reports to :15 broadcast")
                 
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
