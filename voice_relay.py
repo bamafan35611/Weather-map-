@@ -19,7 +19,7 @@ async def handle_client(websocket, path):
     
     try:
         async for message in websocket:
-            data = json.parse(message)
+            data = json.loads(message)  # FIXED: was json.parse
             
             # Handle client identification
             if data.get('type') == 'identify':
