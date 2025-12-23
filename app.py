@@ -284,6 +284,16 @@ except ImportError as e:
     AIR_QUALITY_AVAILABLE = False
     get_aqi_announcement = lambda **kwargs: None
 
+# Import impact predictor (Phase 3)
+try:
+    from impact_predictor import get_alert_impact
+    IMPACT_PREDICTOR_AVAILABLE = True
+    print("✓ Alert impact prediction system loaded")
+except ImportError as e:
+    print(f"⚠ Impact predictor not available: {e}")
+    IMPACT_PREDICTOR_AVAILABLE = False
+    get_alert_impact = lambda alert: None
+
 # Import weekend outlook (Phase 2)
 try:
     from weekend_outlook import get_weekend_announcement
@@ -1507,6 +1517,13 @@ def api_broadcast_scheduled():
                                 wind_info = get_wind_announcement(alert_description)
                                 if wind_info:
                                     announcement_text = f"{announcement_text} {wind_info}"
+                            
+                            # 🆕 PHASE 3: ADD IMPACT PREDICTIONS
+                            if IMPACT_PREDICTOR_AVAILABLE:
+                                impact_text = get_alert_impact(alert)
+                                if impact_text:
+                                    announcement_text = f"{announcement_text} {impact_text}"
+                                    print(f"✓ Added impact prediction to alert: {alert.get('event', 'Unknown')}")
                             
                             broadcast_data['content'].append({
                                 'type': 'alert',
