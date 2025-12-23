@@ -1400,6 +1400,21 @@ def api_broadcast_scheduled():
                 'duration_estimate': '45-60 seconds'
             })
             
+            # 🆕 PHASE 3: ADD STORM REPORTS (Recent severe weather events)
+            if STORM_REPORTS_AVAILABLE:
+                storm_summary = get_storm_reports_summary(
+                    hours_back=24,      # Search last 24 hours  
+                    max_age_hours=6     # Only announce last 6 hours
+                )
+                if storm_summary:
+                    broadcast_data['content'].append({
+                        'type': 'storm_reports',
+                        'text': storm_summary,
+                        'voice_style': 'concerned',
+                        'duration_estimate': '15-30 seconds'
+                    })
+                    print(f"✓ Added storm reports to :00 broadcast")
+            
             # 🆕 PHASE 2: ADD AIR QUALITY INDEX
             if AIR_QUALITY_AVAILABLE:
                 aqi_data = get_aqi_announcement()
