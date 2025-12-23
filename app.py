@@ -304,6 +304,37 @@ except ImportError as e:
     WEEKEND_OUTLOOK_AVAILABLE = False
     get_weekend_announcement = lambda: None
 
+# Import enhanced alert processing (Phase 3)
+try:
+    from alert_processing_enhanced import process_and_prioritize_alerts, get_alert_processor
+    ENHANCED_PROCESSING_AVAILABLE = True
+    print("✓ Enhanced alert processing loaded")
+except ImportError as e:
+    print(f"⚠ Enhanced alert processing not available: {e}")
+    ENHANCED_PROCESSING_AVAILABLE = False
+    process_and_prioritize_alerts = lambda alerts: {'critical': alerts, 'high': [], 'medium': [], 'low': [], 'info': []}
+    get_alert_processor = None
+
+# Import alert trend analysis (Phase 3)
+try:
+    from alert_trends import get_alert_trend_announcement
+    TREND_ANALYSIS_AVAILABLE = True
+    print("✓ Alert trend analysis loaded")
+except ImportError as e:
+    print(f"⚠ Alert trend analysis not available: {e}")
+    TREND_ANALYSIS_AVAILABLE = False
+    get_alert_trend_announcement = lambda alerts: None
+
+# Import enhanced alert expiration (Phase 3)
+try:
+    from alert_expiration_enhanced import get_expiration_announcement
+    ENHANCED_EXPIRATION_AVAILABLE = True
+    print("✓ Enhanced alert expiration tracking loaded")
+except ImportError as e:
+    print(f"⚠ Enhanced expiration tracking not available: {e}")
+    ENHANCED_EXPIRATION_AVAILABLE = False
+    get_expiration_announcement = lambda alerts: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1564,6 +1595,31 @@ def api_broadcast_scheduled():
                                 'duration_estimate': '5 seconds'
                             })
                             print(f"✓ Added watch callout: {watch_event}")
+                
+                # 🆕 PHASE 3: ADD ALERT TREND ANALYSIS
+                if TREND_ANALYSIS_AVAILABLE:
+                    trend_announcement = get_alert_trend_announcement(alerts)
+                    if trend_announcement:
+                        broadcast_data['content'].append({
+                            'type': 'alert_trends',
+                            'text': trend_announcement,
+                            'voice_style': 'concerned',
+                            'duration_estimate': '10-15 seconds'
+                        })
+                        print(f"✓ Added alert trend analysis to :15 broadcast")
+                
+                # 🆕 PHASE 3: ADD EXPIRATION WARNINGS
+                if ENHANCED_EXPIRATION_AVAILABLE:
+                    expiration_announcement = get_expiration_announcement(alerts)
+                    if expiration_announcement:
+                        broadcast_data['content'].append({
+                            'type': 'expiration_warning',
+                            'text': expiration_announcement,
+                            'voice_style': 'professional',
+                            'duration_estimate': '10-15 seconds'
+                        })
+                        print(f"✓ Added expiration warning to :15 broadcast")
+                
                 else:
                     # All alerts filtered by cooldown
                     print("⏸ All alerts recently announced - skipping alert broadcast")
