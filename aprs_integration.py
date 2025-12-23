@@ -243,7 +243,7 @@ class APRSIntegration:
             
             # High winds
             wind_gust = weather.get('wind_gust', 0)
-            if wind_gust >= 40:  # 40+ mph gusts
+            if wind_gust >= 60:  # 60+ mph gusts (severe threshold - filters bad home station data)
                 significant.append({
                     'type': 'wind',
                     'callsign': callsign,
