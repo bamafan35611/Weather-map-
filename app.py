@@ -335,6 +335,38 @@ except ImportError as e:
     ENHANCED_EXPIRATION_AVAILABLE = False
     get_expiration_announcement = lambda alerts: None
 
+# Import APRS ham radio integration (Phase 4)
+try:
+    from aprs_integration import get_aprs_announcement
+    APRS_AVAILABLE = True
+    print("✓ APRS ham radio integration loaded")
+except ImportError as e:
+    print(f"⚠ APRS integration not available: {e}")
+    APRS_AVAILABLE = False
+    get_aprs_announcement = lambda hours_back=6: None
+
+# Import historical comparisons (Phase 4)
+try:
+    from historical_comparisons import get_historical_context, record_current_alert, get_historical_comparisons
+    HISTORICAL_COMPARISONS_AVAILABLE = True
+    print("✓ Historical weather comparisons loaded")
+except ImportError as e:
+    print(f"⚠ Historical comparisons not available: {e}")
+    HISTORICAL_COMPARISONS_AVAILABLE = False
+    get_historical_context = lambda alert: None
+    record_current_alert = lambda alert: None
+    get_historical_comparisons = lambda: None
+
+# Import infrastructure impact (Phase 4)
+try:
+    from infrastructure_impact import get_infrastructure_announcement
+    INFRASTRUCTURE_IMPACT_AVAILABLE = True
+    print("✓ Infrastructure impact analysis loaded")
+except ImportError as e:
+    print(f"⚠ Infrastructure impact not available: {e}")
+    INFRASTRUCTURE_IMPACT_AVAILABLE = False
+    get_infrastructure_announcement = lambda alert: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1556,6 +1588,22 @@ def api_broadcast_scheduled():
                                     announcement_text = f"{announcement_text} {impact_text}"
                                     print(f"✓ Added impact prediction to alert: {alert.get('event', 'Unknown')}")
                             
+                            # 🆕 PHASE 4: ADD INFRASTRUCTURE IMPACT
+                            if INFRASTRUCTURE_IMPACT_AVAILABLE:
+                                infrastructure_text = get_infrastructure_announcement(alert)
+                                if infrastructure_text:
+                                    announcement_text = f"{announcement_text} {infrastructure_text}"
+                                    print(f"✓ Added infrastructure impact to alert")
+                            
+                            # 🆕 PHASE 4: ADD HISTORICAL CONTEXT
+                            if HISTORICAL_COMPARISONS_AVAILABLE:
+                                historical_text = get_historical_context(alert)
+                                if historical_text:
+                                    announcement_text = f"{announcement_text} {historical_text}"
+                                    print(f"✓ Added historical context to alert")
+                                # Record alert for future comparisons
+                                record_current_alert(alert)
+                            
                             broadcast_data['content'].append({
                                 'type': 'alert',
                                 'text': announcement_text,
@@ -1643,6 +1691,18 @@ def api_broadcast_scheduled():
                             'duration_estimate': '15-20 seconds'
                         })
                         print(f"✓ Added storm reports to :15 broadcast")
+                
+                # 🆕 PHASE 4: ADD APRS HAM RADIO REPORTS
+                if APRS_AVAILABLE:
+                    aprs_announcement = get_aprs_announcement(hours_back=6)
+                    if aprs_announcement:
+                        broadcast_data['content'].append({
+                            'type': 'aprs_reports',
+                            'text': aprs_announcement,
+                            'voice_style': 'professional',
+                            'duration_estimate': '10-15 seconds'
+                        })
+                        print(f"✓ Added APRS ham radio reports to :15 broadcast")
                 
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
