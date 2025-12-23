@@ -2622,7 +2622,7 @@ function checkForBriefing() {
         const currentTime = now.getTime();
         const timeSinceLastCheck = currentTime - _lastBriefingCheck;
         
-        if (timeSinceLastCheck > 60000) { // More than 1 minute since last check
+        if (timeSinceLastCheck > 840000) { // More than 14 minutes since last check (allows 15-min broadcasts)
             console.log(`[Briefing] ⏰ Briefing time detected (XX:${minute.toString().padStart(2, '0')})`);
             
             // Trigger appropriate broadcast based on minute
