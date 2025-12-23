@@ -21,27 +21,23 @@ class WeatherEnhancements:
     
     def __init__(self):
         self.nws_api_base = "https://api.weather.gov"
+        # 🔧 FIXED: Use only NorthBamaWX monitored cities (North Alabama + Southern Tennessee)
         self.priority_cities = [
-            {'name': 'Birmingham', 'state': 'AL', 'lat': 33.5186, 'lon': -86.8104},
+            # North Alabama - Major cities
             {'name': 'Huntsville', 'state': 'AL', 'lat': 34.7304, 'lon': -86.5861},
-            {'name': 'Mobile', 'state': 'AL', 'lat': 30.6954, 'lon': -88.0399},
-            {'name': 'Atlanta', 'state': 'GA', 'lat': 33.7490, 'lon': -84.3880},
-            {'name': 'Nashville', 'state': 'TN', 'lat': 36.1627, 'lon': -86.7816},
-            {'name': 'Memphis', 'state': 'TN', 'lat': 35.1495, 'lon': -90.0490},
-            {'name': 'New Orleans', 'state': 'LA', 'lat': 29.9511, 'lon': -90.0715},
-            {'name': 'Dallas', 'state': 'TX', 'lat': 32.7767, 'lon': -96.7970},
-            {'name': 'Houston', 'state': 'TX', 'lat': 29.7604, 'lon': -95.3698},
-            {'name': 'Oklahoma City', 'state': 'OK', 'lat': 35.4676, 'lon': -97.5164},
-            {'name': 'Kansas City', 'state': 'MO', 'lat': 39.0997, 'lon': -94.5786},
-            {'name': 'Chicago', 'state': 'IL', 'lat': 41.8781, 'lon': -87.6298},
-            {'name': 'Minneapolis', 'state': 'MN', 'lat': 44.9778, 'lon': -93.2650},
-            {'name': 'Denver', 'state': 'CO', 'lat': 39.7392, 'lon': -104.9903},
-            {'name': 'Phoenix', 'state': 'AZ', 'lat': 33.4484, 'lon': -112.0740},
-            {'name': 'Los Angeles', 'state': 'CA', 'lat': 34.0522, 'lon': -118.2437},
-            {'name': 'Seattle', 'state': 'WA', 'lat': 47.6062, 'lon': -122.3321},
-            {'name': 'Miami', 'state': 'FL', 'lat': 25.7617, 'lon': -80.1918},
-            {'name': 'New York', 'state': 'NY', 'lat': 40.7128, 'lon': -74.0060},
-            {'name': 'Boston', 'state': 'MA', 'lat': 42.3601, 'lon': -71.0589}
+            {'name': 'Decatur', 'state': 'AL', 'lat': 34.6059, 'lon': -86.9833},
+            {'name': 'Athens', 'state': 'AL', 'lat': 34.8026, 'lon': -86.9719},
+            {'name': 'Florence', 'state': 'AL', 'lat': 34.7998, 'lon': -87.6773},
+            {'name': 'Cullman', 'state': 'AL', 'lat': 34.1748, 'lon': -86.8436},
+            {'name': 'Albertville', 'state': 'AL', 'lat': 34.2676, 'lon': -86.2089},
+            {'name': 'Scottsboro', 'state': 'AL', 'lat': 34.6723, 'lon': -86.0342},
+            {'name': 'Russellville', 'state': 'AL', 'lat': 34.5079, 'lon': -87.7286},
+            {'name': 'Guntersville', 'state': 'AL', 'lat': 34.3581, 'lon': -86.2947},
+            {'name': 'Hartselle', 'state': 'AL', 'lat': 34.4426, 'lon': -86.9356},
+            # Southern Tennessee
+            {'name': 'Fayetteville', 'state': 'TN', 'lat': 35.1520, 'lon': -86.5705},
+            {'name': 'Winchester', 'state': 'TN', 'lat': 35.1859, 'lon': -86.1122},
+            {'name': 'Lynchburg', 'state': 'TN', 'lat': 35.2831, 'lon': -86.3742}
         ]
         self.session = requests.Session()
         self.session.headers.update({

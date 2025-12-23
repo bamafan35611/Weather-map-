@@ -1562,12 +1562,6 @@ def api_broadcast_scheduled():
                     attempts = 0
                     max_city_attempts = 3  # Try up to 3 different cities
                     
-                    # 🆕 FILTER CITIES THROUGH ROTATION TRACKER
-                    if CITY_ROTATION_AVAILABLE:
-                        from local_cities import ALL_CITIES
-                        available_cities = get_available_cities(ALL_CITIES)
-                        print(f"✓ City rotation: {len(available_cities)} cities available (filtered {len(ALL_CITIES) - len(available_cities)} on cooldown)")
-                    
                     while city_briefing is None and attempts < max_city_attempts:
                         try:
                             random_city = get_random_city()
