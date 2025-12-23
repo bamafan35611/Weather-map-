@@ -1107,7 +1107,7 @@ async function runTopOfHourUpdate() {
         }
 
         console.log('[15min :00] Fetching from Flask API...');
-        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
@@ -1140,7 +1140,7 @@ async function runQuarterPastUpdate() {
         }
 
         console.log('[15min :15] Fetching from Flask API...');
-        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
@@ -1164,10 +1164,37 @@ async function runQuarterPastUpdate() {
     }
 }
 
-// :30 - Half Past: Detailed Regional Update (calls existing function)
+// :30 - Half Past: Detailed Regional Update - USES FLASK API
 async function runHalfPastUpdate() {
-    console.log('[15min :30] Triggering detailed regional update');
-    await runLocalNorthAlabamaBroadcast();
+    try {
+        if (!speechEnabled) {
+            console.log('[15min] Speech disabled - skipping :30 update');
+            return;
+        }
+
+        console.log('[15min :30] Fetching from Flask API...');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
+        const data = await response.json();
+        
+        if (!data.success || data.broadcast_type === 'none') {
+            console.log('[15min :30] No broadcast scheduled');
+            return;
+        }
+        
+        console.log(`[15min :30] Broadcasting: ${data.broadcast_type}`);
+        console.log(`[15min :30] Alert count: ${data.alert_count}`);
+        
+        for (const item of data.content) {
+            const text = item.text;
+            console.log(`[15min :30] Speaking: ${text.substring(0, 50)}...`);
+            await speakText(text, '15min-30');
+            if (item.type !== 'quiet') {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    } catch (err) {
+        console.error('[15min :30] Error:', err);
+    }
 }
 
 // :45 - Quarter Till Update - USES FLASK API
@@ -1179,7 +1206,7 @@ async function runQuarterTillUpdate() {
         }
 
         console.log('[15min :45] Fetching from Flask API...');
-        const response = await fetch('/api/broadcast/scheduled?local_area=North Alabama');
+        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
         const data = await response.json();
         
         if (!data.success || data.broadcast_type === 'none') {
