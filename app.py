@@ -264,6 +264,36 @@ except ImportError as e:
     WIND_GUST_AVAILABLE = False
     get_wind_announcement = lambda text: None
 
+# Import storm reports (Phase 2)
+try:
+    from storm_reports import get_storm_reports_summary
+    STORM_REPORTS_AVAILABLE = True
+    print("✓ Storm reports system loaded")
+except ImportError as e:
+    print(f"⚠ Storm reports not available: {e}")
+    STORM_REPORTS_AVAILABLE = False
+    get_storm_reports_summary = lambda **kwargs: None
+
+# Import air quality index (Phase 2)
+try:
+    from air_quality import get_aqi_announcement
+    AIR_QUALITY_AVAILABLE = True
+    print("✓ Air quality monitoring loaded")
+except ImportError as e:
+    print(f"⚠ Air quality not available: {e}")
+    AIR_QUALITY_AVAILABLE = False
+    get_aqi_announcement = lambda **kwargs: None
+
+# Import weekend outlook (Phase 2)
+try:
+    from weekend_outlook import get_weekend_announcement
+    WEEKEND_OUTLOOK_AVAILABLE = True
+    print("✓ Weekend outlook loaded")
+except ImportError as e:
+    print(f"⚠ Weekend outlook not available: {e}")
+    WEEKEND_OUTLOOK_AVAILABLE = False
+    get_weekend_announcement = lambda: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1370,6 +1400,31 @@ def api_broadcast_scheduled():
                 'duration_estimate': '45-60 seconds'
             })
             
+            # 🆕 PHASE 2: ADD AIR QUALITY INDEX
+            if AIR_QUALITY_AVAILABLE:
+                aqi_data = get_aqi_announcement()
+                if aqi_data:
+                    broadcast_data['content'].append({
+                        'type': 'air_quality',
+                        'text': aqi_data['text'],
+                        'voice_style': aqi_data['voice_style'],
+                        'aqi_value': aqi_data['aqi_value'],
+                        'duration_estimate': '15-20 seconds'
+                    })
+                    print(f"✓ Added AQI announcement ({aqi_data['category']}, AQI: {aqi_data['aqi_value']})")
+            
+            # 🆕 PHASE 2: ADD WEEKEND OUTLOOK (Friday PM & Saturday)
+            if WEEKEND_OUTLOOK_AVAILABLE:
+                weekend_announcement = get_weekend_announcement()
+                if weekend_announcement:
+                    broadcast_data['content'].append({
+                        'type': 'weekend_outlook',
+                        'text': weekend_announcement,
+                        'voice_style': 'professional',
+                        'duration_estimate': '15-20 seconds'
+                    })
+                    print(f"✓ Added weekend outlook to :00 broadcast")
+            
             # 🆕 ADD SPC MULTI-DAY OUTLOOK
             if SPC_OUTLOOKS_AVAILABLE:
                 outlook_announcement = get_extended_outlook()
@@ -1485,6 +1540,21 @@ def api_broadcast_scheduled():
                         'text': 'Weather conditions continue across monitored areas. No new alerts at this time.',
                         'voice_style': 'calm'
                     })
+                
+                # 🆕 PHASE 2: ADD STORM REPORTS (before city briefing)
+                if STORM_REPORTS_AVAILABLE:
+                    storm_summary = get_storm_reports_summary(
+                        hours_back=24,      # Search last 24 hours  
+                        max_age_hours=6     # Only announce last 6 hours
+                    )
+                    if storm_summary:
+                        broadcast_data['content'].append({
+                            'type': 'storm_reports',
+                            'text': storm_summary,
+                            'voice_style': 'urgent',
+                            'duration_estimate': '15-20 seconds'
+                        })
+                        print(f"✓ Added storm reports to :15 broadcast")
                 
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
