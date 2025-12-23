@@ -295,6 +295,31 @@ class NWSForecastFetcher:
         index = round(degrees / 45) % 8
         return directions[index]
     
+    def _expand_wind_direction(self, direction_str: str) -> str:
+        """Expand wind direction abbreviations to full words for speech"""
+        # Map of abbreviations to full words
+        direction_map = {
+            'N': 'North',
+            'NNE': 'North-Northeast',
+            'NE': 'Northeast',
+            'ENE': 'East-Northeast',
+            'E': 'East',
+            'ESE': 'East-Southeast',
+            'SE': 'Southeast',
+            'SSE': 'South-Southeast',
+            'S': 'South',
+            'SSW': 'South-Southwest',
+            'SW': 'Southwest',
+            'WSW': 'West-Southwest',
+            'W': 'West',
+            'WNW': 'West-Northwest',
+            'NW': 'Northwest',
+            'NNW': 'North-Northwest'
+        }
+        
+        # Return expanded version if found, otherwise return original
+        return direction_map.get(direction_str, direction_str)
+    
     def get_athens_forecast_specifically(self) -> str:
         """
         Get a broadcast-ready forecast specifically for Athens, AL
@@ -377,7 +402,10 @@ def get_athens_briefing_with_conditions() -> str:
         conditions_parts.append(f"Current temperature is {conditions['temperature']} degrees")
     
     if 'wind_speed' in conditions and conditions['wind_speed'] > 0:
-        wind_text = f"winds {conditions.get('wind_direction', '')} at {conditions['wind_speed']} miles per hour"
+        wind_dir = conditions.get('wind_direction', '')
+        # Expand abbreviations if present
+        expanded_dir = self._expand_wind_direction(wind_dir) if wind_dir else ''
+        wind_text = f"winds {expanded_dir} at {conditions['wind_speed']} miles per hour"
         if 'wind_gust' in conditions and conditions['wind_gust'] > conditions['wind_speed'] + 5:
             wind_text += f" gusting to {conditions['wind_gust']}"
         conditions_parts.append(wind_text)
@@ -473,7 +501,9 @@ def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, st
                     # Only announce if wind speed is significant (>= 5 mph)
                     if wind_mph >= 5:
                         if wind_direction_str:
-                            wind_text = f"winds {wind_direction_str} at {wind_mph} miles per hour"
+                            # Expand abbreviations like SSW to South-Southwest
+                            expanded_direction = self._expand_wind_direction(wind_direction_str)
+                            wind_text = f"winds {expanded_direction} at {wind_mph} miles per hour"
                         else:
                             wind_text = f"winds at {wind_mph} miles per hour"
                         
