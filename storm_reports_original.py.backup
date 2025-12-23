@@ -1,25 +1,12 @@
 """
 storm_reports.py - NorthBamaWX Storm Reports System
-Fetches and announces recent severe weather reports from NWS + SpotterNetwork
+Fetches and announces recent severe weather reports from NWS
 """
 
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import json
-import logging
-
-# Import SpotterNetwork integration
-try:
-    from spotternetwork import get_spotternetwork_reports
-    SPOTTERNETWORK_AVAILABLE = True
-    print("✓ SpotterNetwork integration enabled")
-except ImportError as e:
-    print(f"⚠️ SpotterNetwork not available: {e}")
-    SPOTTERNETWORK_AVAILABLE = False
-    get_spotternetwork_reports = None
-
-logger = logging.getLogger(__name__)
 
 class StormReports:
     """Fetches and formats storm reports from NWS"""
@@ -139,66 +126,6 @@ class StormReports:
         except Exception as e:
             print(f"❌ Error fetching storm reports: {e}")
             return reports
-    
-    def get_all_reports(self, hours_back: int = 24) -> Dict[str, List[Dict]]:
-        """
-        Get storm reports from BOTH NWS and SpotterNetwork, then merge them
-        
-        Args:
-            hours_back: How many hours back to search
-            
-        Returns:
-            Dictionary with 'tornado', 'hail', 'wind', 'flood' report lists
-        """
-        # Start with NWS reports
-        print("📡 Fetching reports from multiple sources...")
-        nws_reports = self.get_recent_reports(hours_back)
-        
-        # Add SpotterNetwork reports if available
-        if SPOTTERNETWORK_AVAILABLE:
-            try:
-                print("🎯 Fetching SpotterNetwork reports...")
-                spotter_reports = get_spotternetwork_reports(hours_back)
-                
-                # Merge SpotterNetwork reports into categorized dict
-                for report in spotter_reports:
-                    report_type = report.get('type', 'other')
-                    
-                    if report_type in ['tornado', 'hail', 'wind', 'flood']:
-                        # Add 'flood' category if not present
-                        if report_type not in nws_reports:
-                            nws_reports[report_type] = []
-                        
-                        # Convert SpotterNetwork format to our format
-                        formatted_report = {
-                            'source': 'SpotterNetwork',
-                            'location': report.get('location', 'Unknown'),
-                            'county': report.get('county', 'Unknown'),
-                            'state': report.get('state', 'Unknown'),
-                            'time': report.get('timestamp').isoformat() if report.get('timestamp') else '',
-                            'verified': report.get('verified', False),
-                            'spotter': report.get('spotter_name', 'Weather Spotter'),
-                            'details': report.get('description', ''),
-                            'raw_data': report  # Keep original for detailed formatting
-                        }
-                        
-                        # Add type-specific data
-                        if report_type == 'hail':
-                            formatted_report['size'] = report.get('magnitude')
-                        elif report_type == 'wind':
-                            formatted_report['speed'] = report.get('magnitude')
-                        
-                        nws_reports[report_type].append(formatted_report)
-                
-                # Log merged results
-                spotter_count = len(spotter_reports)
-                total = sum(len(v) for v in nws_reports.values())
-                print(f"✅ Merged reports: {total} total ({spotter_count} from SpotterNetwork)")
-                
-            except Exception as e:
-                print(f"⚠️ SpotterNetwork fetch failed: {e}")
-        
-        return nws_reports
     
     def _extract_report_details(self, description: str, report_type: str) -> str:
         """Extract relevant details from alert description"""
@@ -347,7 +274,6 @@ def get_storm_reports() -> StormReports:
 def get_storm_reports_summary(hours_back: int = 6, max_age_hours: int = 6) -> Optional[str]:
     """
     Convenience function to get a broadcast-ready storm reports summary
-    NOW INCLUDES SPOTTERNETWORK REPORTS!
     
     Args:
         hours_back: How many hours back to search for reports
@@ -357,8 +283,7 @@ def get_storm_reports_summary(hours_back: int = 6, max_age_hours: int = 6) -> Op
         Formatted announcement or None if no reports
     """
     reporter = get_storm_reports()
-    # Use get_all_reports to merge NWS + SpotterNetwork
-    reports = reporter.get_all_reports(hours_back=hours_back)
+    reports = reporter.get_recent_reports(hours_back=hours_back)
     return reporter.format_report_summary(reports, max_age_hours=max_age_hours)
 
 
