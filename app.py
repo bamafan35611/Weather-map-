@@ -1895,15 +1895,16 @@ def api_broadcast_scheduled():
                         'duration_estimate': '5 seconds'
                     })
             
-            # SECOND: Add alert commentary if available
-            if COMMENTARY_AVAILABLE:
-                update = get_hourly_update(alerts, scored, local_area)
-                broadcast_data['content'].append({
-                    'type': 'commentary',
-                    'priority': 'medium',
-                    'text': update,
-                    'duration_estimate': '15-30 seconds'
-                })
+            # COMMENTARY REMOVED - Was causing "Athens Alabama" pause glitch
+            # At :30, we only want the local forecast
+            # if COMMENTARY_AVAILABLE:
+            #     update = get_hourly_update(alerts, scored, local_area)
+            #     broadcast_data['content'].append({
+            #         'type': 'commentary',
+            #         'priority': 'medium',
+            #         'text': update,
+            #         'duration_estimate': '15-30 seconds'
+            #     })
         
         # :45 - Weather Story
         elif current_minute == 45:
