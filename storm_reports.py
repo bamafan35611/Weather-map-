@@ -292,12 +292,13 @@ class StormReports:
                 parts.append(f"{size} hail reported near {location} {time_str}.")
         
         # Wind reports
-        if recent_wind:
-            for report in recent_wind[:3]:  # Max 3 reports
-                location = report.get('location', 'Unknown location')
-                speed = report.get('speed', 'damaging')
-                time_str = self._format_time_ago(report.get('time', ''))
-                parts.append(f"{speed} winds reported near {location} {time_str}.")
+        # Wind reports - DISABLED (too many false reports)
+        # if recent_wind:
+        #     for report in recent_wind[:3]:  # Max 3 reports
+        #         location = report.get('location', 'Unknown location')
+        #         speed = report.get('speed', 'damaging')
+        #         time_str = self._format_time_ago(report.get('time', ''))
+        #         parts.append(f"{speed} winds reported near {location} {time_str}.")
         
         return " ".join(parts)
     
