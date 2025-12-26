@@ -156,20 +156,24 @@ class WeatherEnhancements:
             return None
     
     def get_wind_story(self) -> Optional[str]:
-        """Generate wind conditions story"""
-        def fetch():
-            windy_cities = []
-            
-            for city in self.priority_cities[:10]:
-                obs = self.get_observation_data(city['lat'], city['lon'])
-                if obs and obs.get('windSpeed', {}).get('value'):
-                    wind_ms = obs['windSpeed']['value']
-                    if wind_ms:
-                        wind_mph = round(wind_ms * 2.237)
-                        
-                        # Get gusts if available
-                        gust_mph = None
-                        if obs.get('windGust', {}).get('value'):
+        """Generate wind conditions story - DISABLED (unreliable current observations)"""
+        # Wind observations from NWS stations are unreliable - disabled
+        return None
+        
+        # OLD CODE DISABLED BELOW:
+        # def fetch():
+        #     windy_cities = []
+        #     
+        #     for city in self.priority_cities[:10]:
+        #         obs = self.get_observation_data(city['lat'], city['lon'])
+        #         if obs and obs.get('windSpeed', {}).get('value'):
+        #             wind_ms = obs['windSpeed']['value']
+        #             if wind_ms:
+        #                 wind_mph = round(wind_ms * 2.237)
+        #                 
+        #                 # Get gusts if available
+        #                 gust_mph = None
+        #                 if obs.get('windGust', {}).get('value'):
                             gust_ms = obs['windGust']['value']
                             if gust_ms:
                                 gust_mph = round(gust_ms * 2.237)
