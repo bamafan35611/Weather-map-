@@ -159,54 +159,6 @@ class WeatherEnhancements:
         """Generate wind conditions story - DISABLED (unreliable current observations)"""
         # Wind observations from NWS stations are unreliable - disabled
         return None
-        
-        # OLD CODE DISABLED BELOW:
-        # def fetch():
-        #     windy_cities = []
-        #     
-        #     for city in self.priority_cities[:10]:
-        #         obs = self.get_observation_data(city['lat'], city['lon'])
-        #         if obs and obs.get('windSpeed', {}).get('value'):
-        #             wind_ms = obs['windSpeed']['value']
-        #             if wind_ms:
-        #                 wind_mph = round(wind_ms * 2.237)
-        #                 
-        #                 # Get gusts if available
-        #                 gust_mph = None
-        #                 if obs.get('windGust', {}).get('value'):
-                            gust_ms = obs['windGust']['value']
-                            if gust_ms:
-                                gust_mph = round(gust_ms * 2.237)
-                        
-                        if wind_mph >= 15 or (gust_mph and gust_mph >= 25):
-                            windy_cities.append({
-                                'city': city['name'],
-                                'state': city['state'],
-                                'wind': wind_mph,
-                                'gust': gust_mph
-                            })
-            
-            if not windy_cities:
-                return None
-            
-            # Sort by highest winds
-            windy_cities.sort(key=lambda x: x['gust'] if x['gust'] else x['wind'], reverse=True)
-            
-            w = windy_cities[0]
-            if w['gust'] and w['gust'] >= 35:
-                story = f"Strong winds reported in {w['city']}, {w['state']} with gusts to {w['gust']} miles per hour. "
-            elif len(windy_cities) >= 3:
-                story = f"Breezy conditions across several areas with winds 15 to 25 miles per hour. "
-            else:
-                story = f"Breezy in {w['city']} with winds at {w['wind']} miles per hour. "
-            
-            return story
-        
-        try:
-            return self._get_cached_or_fetch('wind', fetch)
-        except Exception as e:
-            print(f"Error in wind story: {e}")
-            return None
     
     def get_precipitation_story(self) -> Optional[str]:
         """Generate precipitation story"""
