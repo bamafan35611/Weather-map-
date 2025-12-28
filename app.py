@@ -367,6 +367,18 @@ except ImportError as e:
     INFRASTRUCTURE_IMPACT_AVAILABLE = False
     get_infrastructure_announcement = lambda alert: None
 
+# Import watch probability prediction (Phase 5)
+try:
+    from watch_warning_probability import record_watch, check_warning_linkage, get_watch_probability_announcement
+    WATCH_PROBABILITY_AVAILABLE = True
+    print("✓ Watch → Warning probability system loaded")
+except ImportError as e:
+    print(f"⚠ Watch probability not available: {e}")
+    WATCH_PROBABILITY_AVAILABLE = False
+    record_watch = lambda alert: None
+    check_warning_linkage = lambda alert: None
+    get_watch_probability_announcement = lambda alert: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1603,6 +1615,22 @@ def api_broadcast_scheduled():
                                     print(f"✓ Added historical context to alert")
                                 # Record alert for future comparisons
                                 record_current_alert(alert)
+                            
+                            # 🆕 PHASE 5: WATCH PROBABILITY & TRACKING
+                            if WATCH_PROBABILITY_AVAILABLE:
+                                event_type = alert.get('event', '').lower()
+                                
+                                # If it's a watch, record it and get probability
+                                if 'watch' in event_type:
+                                    record_watch(alert)
+                                    probability_text = get_watch_probability_announcement(alert)
+                                    if probability_text:
+                                        announcement_text = f"{announcement_text} {probability_text}"
+                                        print(f"✓ Added watch probability to alert")
+                                
+                                # If it's a warning, check linkage to watches
+                                if 'warning' in event_type:
+                                    check_warning_linkage(alert)
                             
                             broadcast_data['content'].append({
                                 'type': 'alert',
