@@ -401,13 +401,13 @@ def get_athens_briefing_with_conditions() -> str:
     if 'temperature' in conditions:
         conditions_parts.append(f"Current temperature is {conditions['temperature']} degrees")
     
-    if 'wind_speed' in conditions and conditions['wind_speed'] > 0:
-        wind_dir = conditions.get('wind_direction', '')
-        # Use direction as-is since we're not in the class
-        wind_text = f"winds from the {wind_dir} at {conditions['wind_speed']} miles per hour"
-        if 'wind_gust' in conditions and conditions['wind_gust'] > conditions['wind_speed'] + 5:
-            wind_text += f" gusting to {conditions['wind_gust']}"
-        conditions_parts.append(wind_text)
+    # WIND DISABLED - NWS observation stations have unreliable wind sensors
+    # if 'wind_speed' in conditions and conditions['wind_speed'] > 0:
+    #     wind_dir = conditions.get('wind_direction', '')
+    #     wind_text = f"winds from the {wind_dir} at {conditions['wind_speed']} miles per hour"
+    #     if 'wind_gust' in conditions and conditions['wind_gust'] > conditions['wind_speed'] + 5:
+    #         wind_text += f" gusting to {conditions['wind_gust']}"
+    #     conditions_parts.append(wind_text)
     
     if conditions_parts:
         # Add current conditions before the forecast
