@@ -34,6 +34,10 @@ class SeverityScorer:
             'high wind warning': 65,
             'tornado watch': 60,  # 🆕 RAISED from 45 - Important to announce!
             'severe thunderstorm watch': 55,  # 🆕 RAISED from 40
+            'wind advisory': 45,  # 🆕 ADDED - Should be announced!
+            'dense fog advisory': 40,
+            'winter weather advisory': 42,
+            'flood advisory': 38,
             'flash flood watch': 35,
             'winter storm warning': 50,
             'snow squall warning': 60,
