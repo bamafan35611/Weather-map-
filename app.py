@@ -379,6 +379,16 @@ except ImportError as e:
     check_warning_linkage = lambda alert: None
     get_watch_probability_announcement = lambda alert: None
 
+# Import personal weather station (Phase 6)
+try:
+    from ambient_weather_station import get_personal_station_announcement
+    PERSONAL_STATION_AVAILABLE = True
+    print("✓ Personal Ambient Weather station loaded")
+except ImportError as e:
+    print(f"⚠ Personal weather station not available: {e}")
+    PERSONAL_STATION_AVAILABLE = False
+    get_personal_station_announcement = lambda: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1903,25 +1913,42 @@ def api_broadcast_scheduled():
             broadcast_data['broadcast_type'] = 'hourly_update'
             broadcast_data['local_area'] = local_area
             
-            # FIRST: Get Athens, AL local forecast WITH CURRENT CONDITIONS
-            if FORECAST_FETCHER_AVAILABLE:
+            # 🆕 PHASE 6: USE PERSONAL WEATHER STATION FOR ATHENS
+            local_forecast_text = None
+            
+            # Try personal station first
+            if PERSONAL_STATION_AVAILABLE:
                 try:
-                    local_forecast = get_athens_briefing_with_conditions()
-                    broadcast_data['content'].append({
-                        'type': 'local_forecast',
-                        'priority': 'high',
-                        'text': local_forecast,
-                        'duration_estimate': '20-25 seconds'
-                    })
-                    print(f"✓ Local forecast with current conditions added to :30 broadcast")
+                    personal_conditions = get_personal_station_announcement()
+                    if personal_conditions:
+                        # Get Athens forecast (without current conditions)
+                        if FORECAST_FETCHER_AVAILABLE:
+                            from nws_forecast_fetcher import get_forecast_fetcher
+                            fetcher = get_forecast_fetcher()
+                            forecast_only = fetcher.get_athens_forecast_specifically()
+                            local_forecast_text = f"Athens, Alabama: {personal_conditions}. {forecast_only}"
+                            print(f"✓ Using personal weather station for :30 broadcast")
+                    else:
+                        print(f"⚠ Personal station returned no data, falling back to NWS")
                 except Exception as e:
-                    print(f"⚠ Error getting local forecast: {e}")
-                    broadcast_data['content'].append({
-                        'type': 'local_forecast',
-                        'priority': 'high',
-                        'text': 'Athens, Alabama local forecast temporarily unavailable.',
-                        'duration_estimate': '5 seconds'
-                    })
+                    print(f"⚠ Error getting personal station data: {e}")
+            
+            # Fallback to NWS if personal station not available
+            if not local_forecast_text and FORECAST_FETCHER_AVAILABLE:
+                try:
+                    local_forecast_text = get_athens_briefing_with_conditions()
+                    print(f"✓ Using NWS forecast for :30 broadcast")
+                except Exception as e:
+                    print(f"⚠ Error getting NWS forecast: {e}")
+                    local_forecast_text = 'Athens, Alabama local forecast temporarily unavailable.'
+            
+            if local_forecast_text:
+                broadcast_data['content'].append({
+                    'type': 'local_forecast',
+                    'priority': 'high',
+                    'text': local_forecast_text,
+                    'duration_estimate': '25-30 seconds'
+                })
             
             # COMMENTARY REMOVED - Was causing "Athens Alabama" pause glitch
             # At :30, we only want the local forecast
