@@ -67,6 +67,15 @@ class AmbientWeatherStation:
             self._cached_data = conditions
             self._last_fetch = datetime.now()
             
+            # 🆕 PHASE 7: Record for ML predictions
+            try:
+                from personal_station_ml import record_station_observation
+                record_station_observation(conditions)
+            except ImportError:
+                pass  # ML module not available
+            except Exception as e:
+                print(f"⚠️ Error recording for ML: {e}")
+            
             print(f"✓ Ambient Weather data retrieved successfully")
             print(f"   Temp: {conditions.get('temperature')}°F, Wind: {conditions.get('wind_speed')} mph")
             

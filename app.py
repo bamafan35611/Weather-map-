@@ -389,6 +389,17 @@ except ImportError as e:
     PERSONAL_STATION_AVAILABLE = False
     get_personal_station_announcement = lambda: None
 
+# Import personal station ML predictions (Phase 7)
+try:
+    from personal_station_ml import get_severe_weather_prediction, correlate_alert_with_station
+    PERSONAL_ML_AVAILABLE = True
+    print("✓ Personal station ML predictions loaded")
+except ImportError as e:
+    print(f"⚠ Personal station ML not available: {e}")
+    PERSONAL_ML_AVAILABLE = False
+    get_severe_weather_prediction = lambda: None
+    correlate_alert_with_station = lambda alert_type: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1547,6 +1558,18 @@ def api_broadcast_scheduled():
                     })
                     print(f"✓ Added SPC outlook to :00 broadcast")
             
+            # 🆕 PHASE 7: ADD PERSONAL STATION ML PREDICTION
+            if PERSONAL_ML_AVAILABLE:
+                ml_prediction = get_severe_weather_prediction()
+                if ml_prediction:
+                    broadcast_data['content'].append({
+                        'type': 'ml_prediction',
+                        'text': ml_prediction,
+                        'voice_style': 'concerned',
+                        'duration_estimate': '15-20 seconds'
+                    })
+                    print(f"✓ Added ML prediction from personal station")
+            
             # 🆕 ADD FORECAST ACCURACY ANNOUNCEMENT
             if ACCURACY_ANNOUNCEMENTS_AVAILABLE:
                 accuracy_announcement = get_accuracy_announcement()
@@ -1641,6 +1664,10 @@ def api_broadcast_scheduled():
                                 # If it's a warning, check linkage to watches
                                 if 'warning' in event_type:
                                     check_warning_linkage(alert)
+                                    
+                                    # 🆕 PHASE 7: Correlate warning with personal station data
+                                    if PERSONAL_ML_AVAILABLE:
+                                        correlate_alert_with_station(alert.get('event', 'Unknown'))
                             
                             broadcast_data['content'].append({
                                 'type': 'alert',
