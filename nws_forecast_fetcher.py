@@ -1,12 +1,21 @@
 """
 nws_forecast_fetcher.py - Fetch actual NWS forecast data for specific locations
 IMPROVED VERSION with better error handling and debugging
+INCLUDES BACKUP GRID SYSTEM for reliability
 """
 
 import requests
 from typing import Dict, List, Optional
 from datetime import datetime
 import pytz
+
+# Import backup grid system
+try:
+    from backup_grids import BackupGridSystem
+    BACKUP_GRIDS_AVAILABLE = True
+except ImportError:
+    BACKUP_GRIDS_AVAILABLE = False
+    print("⚠️ Backup grids not available")
 
 class NWSForecastFetcher:
     """Fetches NWS forecast data for specific locations"""
@@ -29,6 +38,9 @@ class NWSForecastFetcher:
         
         # Cache for grid point data (changes rarely)
         self.grid_cache = {}
+        
+        # Initialize backup grid system
+        self.backup_grids = BackupGridSystem() if BACKUP_GRIDS_AVAILABLE else None
     
     def get_forecast_for_location(self, lat: float, lon: float) -> Optional[Dict]:
         """
@@ -117,11 +129,35 @@ class NWSForecastFetcher:
             return None
     
     def get_home_forecast(self) -> Optional[Dict]:
-        """Get forecast for Athens, AL (your home location)"""
-        return self.get_forecast_for_location(
-            self.home_location['lat'],
-            self.home_location['lon']
-        )
+        """
+        Get forecast for Athens, AL with automatic backup grids
+        Tries Athens first, then Huntsville, Decatur, Florence as backups
+        """
+        if self.backup_grids:
+            print("🎯 Fetching Athens forecast with backup grid system...")
+            
+            def fetch_wrapper(lat, lon, city, state):
+                """Wrapper function for backup grid system"""
+                result = self.get_forecast_for_location(lat, lon)
+                if result and result.get('periods'):
+                    return result
+                return None
+            
+            # Try all grids until one succeeds
+            result = self.backup_grids.try_all_grids('athens', fetch_wrapper)
+            
+            if result:
+                return result
+            
+            print("❌ All backup grids failed for Athens")
+            return None
+        else:
+            # Fallback: just try Athens
+            print("⚠️ Backup grids not available, trying Athens only")
+            return self.get_forecast_for_location(
+                self.home_location['lat'],
+                self.home_location['lon']
+            )
     
     def get_current_conditions_summary(self, forecast_data: Dict) -> str:
         """
