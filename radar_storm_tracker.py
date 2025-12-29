@@ -42,30 +42,50 @@ class RadarStormTracker:
     
     def get_approaching_storms(self) -> Optional[Dict]:
         """
-        Check for storms approaching from the west (Mississippi border area)
+        Check for storms approaching from west (Mississippi) and north (Tennessee)
         Returns storm information if detected within 100 miles
         """
         try:
-            # Get radar summary for Alabama
-            # We'll use NWS alerts as proxy for storm activity since real radar API is complex
-            # Look for storms in counties west of our monitoring area
-            
+            # WESTERN APPROACH: Mississippi counties near Alabama border
             western_approach_zones = [
                 # Mississippi counties near Alabama border
                 'MSC093',  # Marshall County, MS (borders Lauderdale County, AL)
                 'MSC117',  # Tishomingo County, MS (borders Lauderdale/Colbert, AL)
                 'MSC003',  # Alcorn County, MS (borders Lauderdale, AL)
                 'MSC139',  # Tippah County, MS (borders Lauderdale, AL)
-                # Western Tennessee near border
-                'TNC023',  # Chester County, TN (west of our area)
-                'TNC167',  # Wayne County, TN (west of our area)
             ]
             
-            # Check for active warnings in approach zones
-            storm_info = self._check_western_approach(western_approach_zones)
+            # NORTHERN APPROACH: Tennessee counties that feed into North Alabama
+            northern_approach_zones = [
+                # Southern Middle Tennessee (directly north of your area)
+                'TNC003',  # Bedford County, TN (north of Limestone/Madison)
+                'TNC055',  # Giles County, TN (north of Limestone)
+                'TNC061',  # Grundy County, TN (north of Jackson/Marshall)
+                'TNC075',  # Hamilton County, TN (Chattanooga - northeast approach)
+                'TNC081',  # Hickman County, TN (northwest of your area)
+                'TNC085',  # Humphreys County, TN (west of your area)
+                'TNC099',  # Lawrence County, TN (north of Lauderdale/Lawrence AL)
+                'TNC108',  # Lewis County, TN (north of Lawrence/Lauderdale)
+                'TNC117',  # Marshall County, TN (north of Madison/Jackson)
+                'TNC119',  # Maury County, TN (north of Limestone/Madison)
+                'TNC121',  # Meigs County, TN (northeast approach)
+                'TNC127',  # Moore County, TN (your monitoring area)
+                'TNC141',  # Putnam County, TN (far north)
+                'TNC169',  # Williamson County, TN (north of your area)
+                # Western Tennessee near border
+                'TNC023',  # Chester County, TN (west of your area)
+                'TNC167',  # Wayne County, TN (north/west of your area)
+            ]
             
-            if storm_info:
-                return storm_info
+            # Check western approach first
+            western_storm = self._check_approach_zone(western_approach_zones, 'western')
+            if western_storm:
+                return western_storm
+            
+            # Check northern approach
+            northern_storm = self._check_approach_zone(northern_approach_zones, 'northern')
+            if northern_storm:
+                return northern_storm
             
             # Also check for watches that might indicate approaching storms
             watch_info = self._check_approaching_watches()
@@ -76,10 +96,10 @@ class RadarStormTracker:
             print(f"⚠️ Error checking approaching storms: {e}")
             return None
     
-    def _check_western_approach(self, zones: List[str]) -> Optional[Dict]:
-        """Check for storms in western approach zones"""
+    def _check_approach_zone(self, zones: List[str], direction: str) -> Optional[Dict]:
+        """Check for storms in specified approach zones"""
         try:
-            # Build URL for western zones
+            # Build URL for zones
             zone_params = '&'.join([f'zone={zone}' for zone in zones])
             url = f"{self.nws_api_base}/alerts/active?{zone_params}&status=actual&message_type=alert"
             
@@ -105,19 +125,23 @@ class RadarStormTracker:
                     })
             
             if severe_alerts:
-                # Storms detected approaching from west
-                return self._build_approach_announcement(severe_alerts, 'western approach')
+                # Storms detected approaching from this direction
+                return self._build_approach_announcement(severe_alerts, direction)
             
             return None
             
         except Exception as e:
-            print(f"⚠️ Error checking western approach: {e}")
+            print(f"⚠️ Error checking {direction} approach: {e}")
             return None
+    
+    def _check_western_approach(self, zones: List[str]) -> Optional[Dict]:
+        """DEPRECATED: Use _check_approach_zone instead"""
+        return self._check_approach_zone(zones, 'western')
     
     def _check_approaching_watches(self) -> Optional[Dict]:
         """Check for watches that might indicate approaching storms"""
         try:
-            # Get active watches for broader area (includes Mississippi)
+            # Get active watches for broader area (includes Mississippi and Tennessee)
             url = f"{self.nws_api_base}/alerts/active?area=AL,MS,TN&status=actual"
             
             response = requests.get(url, headers={'Accept': 'application/geo+json'}, timeout=10)
@@ -127,24 +151,34 @@ class RadarStormTracker:
             features = data.get('features', [])
             
             # Look for severe thunderstorm or tornado watches
-            watches = []
+            western_watches = []
+            northern_watches = []
+            
             for feature in features:
                 props = feature.get('properties', {})
                 event = props.get('event', '').lower()
                 area = props.get('areaDesc', '')
                 
                 if 'watch' in event and any(word in event for word in ['severe', 'thunderstorm', 'tornado']):
-                    # Check if watch area is west of us (Mississippi counties)
-                    if 'mississippi' in area.lower() or any(ms_word in area.lower() for ms_word in ['tupelo', 'corinth', 'booneville']):
-                        watches.append({
-                            'event': props.get('event'),
-                            'area': area,
-                            'description': props.get('description', ''),
-                            'expires': props.get('expires')
-                        })
+                    watch_info = {
+                        'event': props.get('event'),
+                        'area': area,
+                        'description': props.get('description', ''),
+                        'expires': props.get('expires')
+                    }
+                    
+                    # Check if watch area is west (Mississippi)
+                    if 'mississippi' in area.lower() or any(ms_word in area.lower() for ms_word in ['tupelo', 'corinth', 'booneville', 'tishomingo']):
+                        western_watches.append(watch_info)
+                    # Check if watch area is north (Tennessee)
+                    elif 'tennessee' in area.lower() or any(tn_word in area.lower() for tn_word in ['nashville', 'columbia', 'shelbyville', 'manchester', 'tullahoma', 'fayetteville']):
+                        northern_watches.append(watch_info)
             
-            if watches:
-                return self._build_watch_announcement(watches)
+            # Prioritize western approach, then northern
+            if western_watches:
+                return self._build_watch_announcement(western_watches, 'western')
+            elif northern_watches:
+                return self._build_watch_announcement(northern_watches, 'northern')
             
             return None
             
@@ -155,9 +189,16 @@ class RadarStormTracker:
     def _build_approach_announcement(self, alerts: List[Dict], direction: str) -> Dict:
         """Build announcement for approaching storms"""
         
-        # Estimate distance based on zone (rough approximation)
-        # Mississippi border is approximately 40-50 miles west of Athens
-        estimated_distance = 45  # miles
+        # Estimate distance and direction text based on approach direction
+        if direction == 'western':
+            estimated_distance = 45  # Mississippi border ~40-50 miles west
+            direction_text = "to the west near the Mississippi border"
+        elif direction == 'northern':
+            estimated_distance = 50  # Southern Tennessee ~40-60 miles north
+            direction_text = "to the north in Southern Tennessee"
+        else:
+            estimated_distance = 45
+            direction_text = "in the region"
         
         # Estimate storm speed (typical: 30-40 mph for severe storms)
         estimated_speed = 35  # mph
@@ -187,7 +228,7 @@ class RadarStormTracker:
         
         announcement = (
             f"Radar update: {storm_desc} detected approximately {estimated_distance} miles "
-            f"to the west near the Mississippi border, moving east. "
+            f"{direction_text}, moving toward our area. "
             f"Expected to reach our area in approximately {eta_minutes} minutes around "
             f"{arrival_time.strftime('%-I:%M %p')}. Monitor conditions closely."
         )
@@ -199,29 +240,41 @@ class RadarStormTracker:
             'eta_minutes': eta_minutes,
             'arrival_time': arrival_time.strftime('%-I:%M %p'),
             'urgency': urgency,
+            'direction': direction,
             'storm_types': alert_types,
             'announcement': announcement,
             'alerts': alerts
         }
     
-    def _build_watch_announcement(self, watches: List[Dict]) -> Dict:
+    def _build_watch_announcement(self, watches: List[Dict], direction: str = 'western') -> Dict:
         """Build announcement for approaching watches"""
         
         watch_type = watches[0]['event']
         
+        if direction == 'western':
+            direction_text = "to our west in Mississippi"
+            estimated_distance = 60
+        elif direction == 'northern':
+            direction_text = "to our north in Southern Tennessee"
+            estimated_distance = 65
+        else:
+            direction_text = "in the region"
+            estimated_distance = 60
+        
         announcement = (
-            f"Weather outlook: A {watch_type} is in effect to our west in Mississippi. "
+            f"Weather outlook: A {watch_type} is in effect {direction_text}. "
             f"Conditions favorable for severe weather development. "
-            f"Storms may approach our area later this afternoon. Stay weather aware."
+            f"Storms may approach our area later. Stay weather aware."
         )
         
         return {
             'has_approaching_storms': True,
-            'distance_miles': 60,  # Approximate
+            'distance_miles': estimated_distance,
             'speed_mph': 30,  # Conservative estimate
             'eta_minutes': 120,  # 2 hours
             'arrival_time': (datetime.now() + timedelta(hours=2)).strftime('%-I:%M %p'),
             'urgency': 'distant',
+            'direction': direction,
             'storm_types': [watch_type],
             'announcement': announcement,
             'watches': watches
