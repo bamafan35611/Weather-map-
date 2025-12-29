@@ -400,6 +400,17 @@ except ImportError as e:
     get_severe_weather_prediction = lambda: None
     correlate_alert_with_station = lambda alert_type: None
 
+# Import radar storm tracker (Phase 8)
+try:
+    from radar_storm_tracker import get_approaching_storm_announcement, get_storm_tracking_info
+    RADAR_TRACKER_AVAILABLE = True
+    print("✓ Radar storm tracker loaded (Phase 8)")
+except ImportError as e:
+    print(f"⚠ Radar storm tracker not available: {e}")
+    RADAR_TRACKER_AVAILABLE = False
+    get_approaching_storm_announcement = lambda: None
+    get_storm_tracking_info = lambda: None
+
 # ----------------------------------------------------------------------
 # 🆕 ALERT ANNOUNCEMENT COOLDOWN SYSTEM
 # ----------------------------------------------------------------------
@@ -1570,6 +1581,18 @@ def api_broadcast_scheduled():
                     })
                     print(f"✓ Added ML prediction from personal station")
             
+            # 🆕 PHASE 8: ADD RADAR STORM TRACKING
+            if RADAR_TRACKER_AVAILABLE:
+                approaching_storm = get_approaching_storm_announcement()
+                if approaching_storm:
+                    broadcast_data['content'].append({
+                        'type': 'radar_tracking',
+                        'text': approaching_storm,
+                        'voice_style': 'concerned',
+                        'duration_estimate': '15-25 seconds'
+                    })
+                    print(f"✓ Added radar storm tracking to :00 broadcast")
+            
             # 🆕 ADD FORECAST ACCURACY ANNOUNCEMENT
             if ACCURACY_ANNOUNCEMENTS_AVAILABLE:
                 accuracy_announcement = get_accuracy_announcement()
@@ -1769,6 +1792,18 @@ def api_broadcast_scheduled():
                         })
                         print(f"✓ Added APRS ham radio reports to :15 broadcast")
                 
+                # 🆕 PHASE 8: ADD RADAR STORM TRACKING (if no active alerts)
+                if RADAR_TRACKER_AVAILABLE and len(alerts_to_announce) == 0:
+                    approaching_storm = get_approaching_storm_announcement()
+                    if approaching_storm:
+                        broadcast_data['content'].append({
+                            'type': 'radar_tracking',
+                            'text': approaching_storm,
+                            'voice_style': 'concerned',
+                            'duration_estimate': '15-25 seconds'
+                        })
+                        print(f"✓ Added radar storm tracking to :15 broadcast")
+                
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
                     city_briefing = None
@@ -1885,12 +1920,28 @@ def api_broadcast_scheduled():
                                     'voice_style': announcement['style']
                                 })
             else:
-                # No alerts - just give city briefing
-                broadcast_data['content'].append({
-                    'type': 'quiet',
-                    'text': 'NorthBamaWX. All clear at this time.',
-                    'voice_style': 'calm'
-                })
+                # No alerts - check for approaching storms or give all clear
+                
+                # 🆕 PHASE 8: CHECK FOR APPROACHING STORMS
+                approaching_storm = None
+                if RADAR_TRACKER_AVAILABLE:
+                    approaching_storm = get_approaching_storm_announcement()
+                
+                if approaching_storm:
+                    # Storms approaching - announce them
+                    broadcast_data['content'].append({
+                        'type': 'radar_tracking',
+                        'text': approaching_storm,
+                        'voice_style': 'concerned'
+                    })
+                    print(f"✓ Announced approaching storms (no active alerts yet)")
+                else:
+                    # All clear - no alerts and no approaching storms
+                    broadcast_data['content'].append({
+                        'type': 'quiet',
+                        'text': 'NorthBamaWX. All clear at this time.',
+                        'voice_style': 'calm'
+                    })
                 
                 # 🆕 ADD RANDOM CITY BRIEFING WHEN NO ALERTS WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
