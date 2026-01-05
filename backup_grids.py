@@ -13,33 +13,33 @@ class BackupGridSystem:
         # Format: (latitude, longitude, city_name, state)
         self.grid_points = {
             'athens': [
-                (34.8023, -86.9719, 'Athens', 'AL'),      # Primary
+                (34.8026, -86.9719, 'Athens', 'AL'),      # Primary - FIXED to match local_cities.py
                 (34.7304, -86.5861, 'Huntsville', 'AL'),  # Backup 1
                 (34.6059, -86.9833, 'Decatur', 'AL'),     # Backup 2
                 (34.8315, -87.6773, 'Florence', 'AL'),    # Backup 3
             ],
             'huntsville': [
                 (34.7304, -86.5861, 'Huntsville', 'AL'),  # Primary
-                (34.8023, -86.9719, 'Athens', 'AL'),      # Backup 1
+                (34.8026, -86.9719, 'Athens', 'AL'),      # Backup 1 - FIXED
                 (34.6059, -86.9833, 'Decatur', 'AL'),     # Backup 2
                 (34.9889, -86.0083, 'Scottsboro', 'AL'),  # Backup 3
             ],
             'decatur': [
                 (34.6059, -86.9833, 'Decatur', 'AL'),     # Primary
                 (34.7304, -86.5861, 'Huntsville', 'AL'),  # Backup 1
-                (34.8023, -86.9719, 'Athens', 'AL'),      # Backup 2
+                (34.8026, -86.9719, 'Athens', 'AL'),      # Backup 2 - FIXED
                 (34.4640, -87.0211, 'Cullman', 'AL'),     # Backup 3
             ],
             'florence': [
                 (34.8315, -87.6773, 'Florence', 'AL'),    # Primary
                 (34.9748, -87.6081, 'Muscle Shoals', 'AL'),# Backup 1
-                (34.8023, -86.9719, 'Athens', 'AL'),      # Backup 2
+                (34.8026, -86.9719, 'Athens', 'AL'),      # Backup 2 - FIXED
                 (34.7304, -86.5861, 'Huntsville', 'AL'),  # Backup 3
             ],
             'scottsboro': [
                 (34.9889, -86.0083, 'Scottsboro', 'AL'),  # Primary
                 (34.7304, -86.5861, 'Huntsville', 'AL'),  # Backup 1
-                (34.8023, -86.9719, 'Athens', 'AL'),      # Backup 2
+                (34.8026, -86.9719, 'Athens', 'AL'),      # Backup 2 - FIXED
             ],
             'cullman': [
                 (34.4640, -87.0211, 'Cullman', 'AL'),     # Primary

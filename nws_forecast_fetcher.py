@@ -28,12 +28,12 @@ class NWSForecastFetcher:
             'Accept': 'application/geo+json'
         })
         
-        # Your primary location
+        # Your primary location - FIXED to match local_cities.py exactly
         self.home_location = {
             'name': 'Athens',
             'state': 'AL',
-            'lat': 34.80,
-            'lon': -86.97
+            'lat': 34.8026,  # FIXED: was 34.80 (matches local_cities.py)
+            'lon': -86.9719  # FIXED: was -86.97 (matches local_cities.py)
         }
         
         # Cache for grid point data (changes rarely)
