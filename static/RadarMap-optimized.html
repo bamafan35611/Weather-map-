@@ -994,111 +994,9 @@ async function fetchForecastData() {
     }
 }
 
-// === CHATTY PERSONALITY HELPERS ===
-
-function getTimeOfDayGreeting() {
-    const now = new Date();
-    const hour = now.getHours();
-    
-    if (hour >= 6 && hour < 12) return "Good morning";
-    if (hour >= 12 && hour < 17) return "Good afternoon";
-    if (hour >= 17 && hour < 22) return "Good evening";
-    return "Good night";
-}
-
-function getDayContext() {
-    const now = new Date();
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayName = dayNames[now.getDay()];
-    const hour = now.getHours();
-    
-    // Weekend references
-    if (dayName === 'Friday' && hour >= 15) return "Happy Friday afternoon";
-    if (dayName === 'Friday') return "Happy Friday";
-    if (dayName === 'Saturday') return "Happy Saturday";
-    if (dayName === 'Sunday' && hour < 18) return "Happy Sunday";
-    if (dayName === 'Sunday') return "Sunday evening";
-    
-    // Weekday references
-    if (dayName === 'Monday') return "Starting the week off";
-    if (dayName === 'Wednesday') return "Middle of the week";
-    if (dayName === 'Thursday') return "Almost to the weekend";
-    
-    return `This ${dayName}`;
-}
-
-function getWeatherCommentary(temp, conditions) {
-    const conditionsLower = conditions.toLowerCase();
-    
-    // Temperature-based comments
-    if (temp >= 85) {
-        return "Hot one out there";
-    } else if (temp >= 75 && temp < 85) {
-        if (conditionsLower.includes('sunny') || conditionsLower.includes('clear')) {
-            return "Beautiful weather";
-        }
-        return "Nice conditions";
-    } else if (temp >= 65 && temp < 75) {
-        return "Perfect weather";
-    } else if (temp >= 50 && temp < 65) {
-        return "Pleasant out there";
-    } else if (temp >= 35 && temp < 50) {
-        return "Bit chilly";
-    } else {
-        return "Cold one out there";
-    }
-}
-
-function getConditionsDescription(conditions) {
-    const lower = conditions.toLowerCase();
-    
-    if (lower.includes('sunny') && lower.includes('clear')) {
-        return "with beautiful sunshine";
-    } else if (lower.includes('sunny')) {
-        return "with plenty of sunshine";
-    } else if (lower.includes('clear')) {
-        return "with clear skies";
-    } else if (lower.includes('partly cloudy') || lower.includes('partly sunny')) {
-        return "with some clouds mixing in";
-    } else if (lower.includes('mostly cloudy')) {
-        return "with clouds rolling through";
-    } else if (lower.includes('cloudy') || lower.includes('overcast')) {
-        return "under cloudy skies";
-    } else if (lower.includes('rain') && lower.includes('thunder')) {
-        return "with thunderstorms in the area";
-    } else if (lower.includes('rain') || lower.includes('showers')) {
-        return "with rain in the forecast";
-    } else if (lower.includes('snow')) {
-        return "with snow in the forecast";
-    } else {
-        return `and ${conditions.toLowerCase()}`;
-    }
-}
-
-function getPracticalAdvice(temp, conditions) {
-    const conditionsLower = conditions.toLowerCase();
-    
-    if (temp >= 90) {
-        return "Stay hydrated out there!";
-    } else if (temp <= 35) {
-        return "Bundle up if you're heading out!";
-    } else if (temp <= 50) {
-        return "Grab a jacket if you're heading out!";
-    } else if (conditionsLower.includes('rain')) {
-        return "Don't forget your umbrella!";
-    } else if (conditionsLower.includes('clear') && temp >= 60 && temp <= 75) {
-        return "Great day to be outside!";
-    } else if (conditionsLower.includes('sunny')) {
-        return "Enjoy the sunshine!";
-    }
-    
-    return "";
-}
-
 // === ROTATING 15-MINUTE BROADCAST SYSTEM ===
 
-
-// :00 - Top of Hour Update - USES FLASK API
+// :00 - Top of Hour: Alert Status Update + Current Conditions
 async function runTopOfHourUpdate() {
     try {
         if (!speechEnabled) {
@@ -1106,32 +1004,59 @@ async function runTopOfHourUpdate() {
             return;
         }
 
-        console.log('[15min :00] Fetching from Flask API...');
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
-        const data = await response.json();
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const forecast = await fetchForecastData();
         
-        if (!data.success || data.broadcast_type === 'none') {
-            console.log('[15min :00] No broadcast scheduled');
-            return;
+        const now = new Date();
+        const hour = now.toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric'
+        });
+
+        let parts = [];
+        parts.push(`It's ${hour} o'clock Central.`);
+        
+        // Add current conditions if available
+        if (forecast && forecast.periods && forecast.periods[0]) {
+            const current = forecast.periods[0];
+            parts.push(`Current conditions in Athens: ${current.temperature} degrees and ${current.shortForecast.toLowerCase()}.`);
         }
         
-        console.log(`[15min :00] Broadcasting: ${data.broadcast_type}`);
-        console.log(`[15min :00] Alert count: ${data.alert_count}`);
-        
-        for (const item of data.content) {
-            const text = item.text;
-            console.log(`[15min :00] Speaking: ${text.substring(0, 50)}...`);
-            await speakText(text, '15min-00');
-            if (item.type !== 'quiet') {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+        parts.push(`Monitoring weather across North Alabama and southern Tennessee.`);
+
+        if (!alerts.length) {
+            parts.push('No weather alerts in effect at this time.');
+        } else {
+            const warnings = alerts.filter(a => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+                return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
+            });
+
+            const watches = alerts.filter(a => {
+                const p = a.properties || {};
+                const ev = (p.event || '').toLowerCase();
+                return ev.includes('watch') && (p.status === 'Actual' || p.status === 'actual');
+            });
+
+            if (warnings.length > 0) {
+                parts.push(`Currently tracking ${warnings.length} active warning${warnings.length > 1 ? 's' : ''} affecting the region.`);
+            } else if (watches.length > 0) {
+                parts.push(`${watches.length} watch${watches.length > 1 ? 'es are' : ' is'} in effect. Monitoring conditions closely.`);
+            } else {
+                parts.push('Weather advisories are present but no warnings at this time.');
             }
         }
+
+        const text = parts.join(' ');
+        console.log('[15min :00] Speaking top of hour update:', text);
+        await speakText(text, '15min-00');
     } catch (err) {
         console.error('[15min :00] Error:', err);
     }
 }
 
-// :15 - Quarter Past Update - USES FLASK API
+// :15 - Quarter Past: Brief Weather Summary + Short Forecast
 async function runQuarterPastUpdate() {
     try {
         if (!speechEnabled) {
@@ -1139,65 +1064,47 @@ async function runQuarterPastUpdate() {
             return;
         }
 
-        console.log('[15min :15] Fetching from Flask API...');
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
-        const data = await response.json();
-        
-        if (!data.success || data.broadcast_type === 'none') {
-            console.log('[15min :15] No broadcast scheduled');
-            return;
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const forecast = await fetchForecastData();
+
+        let parts = [];
+        parts.push('Quarter past the hour.');
+
+        const warnings = alerts.filter(a => {
+            const p = a.properties || {};
+            const ev = (p.event || '').toLowerCase();
+            return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
+        });
+
+        if (warnings.length > 0) {
+            parts.push(`Weather conditions remain active across the monitoring area with ${warnings.length} warning${warnings.length > 1 ? 's' : ''} ongoing.`);
+        } else if (alerts.length > 0) {
+            parts.push('Weather conditions remain quiet with no active warnings across North Alabama and southern Tennessee.');
+        } else {
+            parts.push('Conditions remain calm across North Alabama and southern Tennessee.');
         }
         
-        console.log(`[15min :15] Broadcasting: ${data.broadcast_type}`);
-        console.log(`[15min :15] Alert count: ${data.alert_count}`);
-        
-        for (const item of data.content) {
-            const text = item.text;
-            console.log(`[15min :15] Speaking: ${text.substring(0, 50)}...`);
-            await speakText(text, '15min-15');
-            if (item.type !== 'quiet') {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
+        // Add short forecast if available
+        if (forecast && forecast.periods && forecast.periods.length > 1) {
+            const upcoming = forecast.periods[1]; // Next period
+            parts.push(`${upcoming.name}: ${upcoming.shortForecast.toLowerCase()}, high near ${upcoming.temperature}.`);
         }
+
+        const text = parts.join(' ');
+        console.log('[15min :15] Speaking quarter past update:', text);
+        await speakText(text, '15min-15');
     } catch (err) {
         console.error('[15min :15] Error:', err);
     }
 }
 
-// :30 - Half Past: Detailed Regional Update - USES FLASK API
+// :30 - Half Past: Detailed Regional Update (calls existing function)
 async function runHalfPastUpdate() {
-    try {
-        if (!speechEnabled) {
-            console.log('[15min] Speech disabled - skipping :30 update');
-            return;
-        }
-
-        console.log('[15min :30] Fetching from Flask API...');
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
-        const data = await response.json();
-        
-        if (!data.success || data.broadcast_type === 'none') {
-            console.log('[15min :30] No broadcast scheduled');
-            return;
-        }
-        
-        console.log(`[15min :30] Broadcasting: ${data.broadcast_type}`);
-        console.log(`[15min :30] Alert count: ${data.alert_count}`);
-        
-        for (const item of data.content) {
-            const text = item.text;
-            console.log(`[15min :30] Speaking: ${text.substring(0, 50)}...`);
-            await speakText(text, '15min-30');
-            if (item.type !== 'quiet') {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            }
-        }
-    } catch (err) {
-        console.error('[15min :30] Error:', err);
-    }
+    console.log('[15min :30] Triggering detailed regional update');
+    await runLocalNorthAlabamaBroadcast();
 }
 
-// :45 - Quarter Till Update - USES FLASK API
+// :45 - Quarter Till: Alert Check + Extended Outlook
 async function runQuarterTillUpdate() {
     try {
         if (!speechEnabled) {
@@ -1205,26 +1112,76 @@ async function runQuarterTillUpdate() {
             return;
         }
 
-        console.log('[15min :45] Fetching from Flask API...');
-        const response = await fetch((BACKEND_BASE_URL || '') + '/api/broadcast/scheduled?local_area=North Alabama');
-        const data = await response.json();
+        const alerts = Array.isArray(latestAllAlerts) ? latestAllAlerts : [];
+        const forecast = await fetchForecastData();
         
-        if (!data.success || data.broadcast_type === 'none') {
-            console.log('[15min :45] No broadcast scheduled');
-            return;
-        }
-        
-        console.log(`[15min :45] Broadcasting: ${data.broadcast_type}`);
-        console.log(`[15min :45] Alert count: ${data.alert_count}`);
-        
-        for (const item of data.content) {
-            const text = item.text;
-            console.log(`[15min :45] Speaking: ${text.substring(0, 50)}...`);
-            await speakText(text, '15min-45');
-            if (item.type !== 'quiet') {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+        const now = new Date();
+        const nextHour = new Date(now.getTime() + 60 * 60 * 1000);
+        const nextHourString = nextHour.toLocaleTimeString('en-US', {
+            timeZone: 'America/Chicago',
+            hour: 'numeric'
+        });
+
+        let parts = [];
+        parts.push('Quarter till the hour. Checking the radar across North Alabama and southern Tennessee.');
+
+        const warnings = alerts.filter(a => {
+            const p = a.properties || {};
+            const ev = (p.event || '').toLowerCase();
+            return ev.includes('warning') && (p.status === 'Actual' || p.status === 'actual');
+        });
+
+        const watches = alerts.filter(a => {
+            const p = a.properties || {};
+            const ev = (p.event || '').toLowerCase();
+            return ev.includes('watch') && (p.status === 'Actual' || p.status === 'actual');
+        });
+
+        if (warnings.length > 0) {
+            const tornadoWarnings = warnings.filter(a => 
+                (a.properties?.event || '').toLowerCase().includes('tornado')
+            ).length;
+            
+            const severeWarnings = warnings.filter(a => 
+                (a.properties?.event || '').toLowerCase().includes('severe thunderstorm')
+            ).length;
+
+            if (tornadoWarnings > 0) {
+                parts.push(`${tornadoWarnings} tornado warning${tornadoWarnings > 1 ? 's' : ''} remain${tornadoWarnings === 1 ? 's' : ''} in effect.`);
+            } else if (severeWarnings > 0) {
+                parts.push(`${severeWarnings} severe thunderstorm warning${severeWarnings > 1 ? 's' : ''} continue${severeWarnings === 1 ? 's' : ''} across the area.`);
+            } else {
+                parts.push(`Active warnings continue. Stay weather aware.`);
+            }
+            
+            parts.push(`Monitoring through the ${nextHourString} o'clock hour.`);
+        } else if (watches.length > 0) {
+            parts.push(`Watch conditions persist. No warnings currently, but staying vigilant through ${nextHourString}.`);
+        } else {
+            parts.push(`No warnings at this time.`);
+            
+            // Add extended forecast outlook if available
+            if (forecast && forecast.periods && forecast.periods.length > 2) {
+                const tonight = forecast.periods.find(p => 
+                    p.name.toLowerCase().includes('tonight') || 
+                    p.name.toLowerCase().includes('night')
+                );
+                const tomorrow = forecast.periods.find(p => 
+                    p.name.toLowerCase().includes('tomorrow') || 
+                    (p.isDaytime && p.name.toLowerCase().includes('day'))
+                );
+                
+                if (tonight) {
+                    parts.push(`${tonight.name}: ${tonight.shortForecast.toLowerCase()}, low around ${tonight.temperature}.`);
+                } else if (tomorrow) {
+                    parts.push(`${tomorrow.name}: ${tomorrow.shortForecast.toLowerCase()}, high near ${tomorrow.temperature}.`);
+                }
             }
         }
+
+        const text = parts.join(' ');
+        console.log('[15min :45] Speaking quarter till update:', text);
+        await speakText(text, '15min-45');
     } catch (err) {
         console.error('[15min :45] Error:', err);
     }
@@ -1400,7 +1357,48 @@ window.speechSynthesis.onvoiceschanged = () => {
     console.log(`Loaded ${voices.length} voices`);
 };
 
-async function speakText(text, priority = 'normal') {
+// ============================================================================
+// SPEECH QUEUE SYSTEM - Prevents interruptions, plays announcements in order
+// ============================================================================
+let speechQueue = [];
+let currentlySpeaking = false;
+
+async function queueSpeech(text, priority = 'normal') {
+    console.log(`[queue] Adding to queue: "${text.substring(0, 50)}..." (priority: ${priority})`);
+    
+    speechQueue.push({
+        text: text,
+        priority: priority,
+        timestamp: Date.now()
+    });
+    
+    // Start processing queue if not already speaking
+    if (!currentlySpeaking) {
+        await processQueue();
+    }
+}
+
+async function processQueue() {
+    if (speechQueue.length === 0) {
+        currentlySpeaking = false;
+        console.log('[queue] Queue empty, finished processing');
+        return;
+    }
+    
+    currentlySpeaking = true;
+    
+    // Get next item from queue
+    const item = speechQueue.shift();
+    console.log(`[queue] Speaking next item (${speechQueue.length} remaining in queue)`);
+    
+    // Speak it using the original speakText function
+    await speakTextOriginal(item.text, item.priority);
+    
+    // Continue with next item
+    await processQueue();
+}
+
+async function speakTextOriginal(text, priority = 'normal') {
     if (!speechEnabled) {
         return Promise.resolve();
     }
@@ -1486,7 +1484,7 @@ async function speakText(text, priority = 'normal') {
     // Fallback to browser TTS
     return new Promise((resolve) => {
         if ('speechSynthesis' in window) {
-            if (speechSynthesis.speaking && priority === 'alert') { speechSynthesis.cancel(); }
+            // Queue system handles ordering - no interrupts needed
             
             const utterance = new SpeechSynthesisUtterance(cleanText);
             utterance.rate = 0.95;
@@ -1533,6 +1531,11 @@ async function speakText(text, priority = 'normal') {
             resolve(false);
         }
     });
+}
+
+// New speakText that uses the queue system
+async function speakText(text, priority = 'normal') {
+    return queueSpeech(text, priority);
 }
 
 // Connect to voice relay server
@@ -2622,7 +2625,7 @@ function checkForBriefing() {
         const currentTime = now.getTime();
         const timeSinceLastCheck = currentTime - _lastBriefingCheck;
         
-        if (timeSinceLastCheck > 840000) { // More than 14 minutes since last check (allows 15-min broadcasts)
+        if (timeSinceLastCheck > 60000) { // More than 1 minute since last check
             console.log(`[Briefing] ⏰ Briefing time detected (XX:${minute.toString().padStart(2, '0')})`);
             
             // Trigger appropriate broadcast based on minute
@@ -3015,88 +3018,6 @@ async function processWatchesWithZones(alerts) {
     return processedWatches;
 }
 
-// Process warnings without geometry using zone codes (same logic as watches)
-async function processWarningsWithZones(alerts) {
-    // Filter warnings without geometry - include tornado, severe thunderstorm, flash flood, and flood warnings
-    const warningsWithoutGeometry = alerts.filter(a => {
-        const event = (a.properties.event || '').toLowerCase();
-        return (event.includes('tornado warning') || 
-                event.includes('severe thunderstorm warning') || 
-                event.includes('flash flood warning') ||
-                event.includes('flood warning')) && !a.geometry;
-    });
-    
-    if (warningsWithoutGeometry.length === 0) {
-        console.log('No warnings need zone geometry processing');
-        return [];
-    }
-    
-    console.log(`Processing ${warningsWithoutGeometry.length} warnings with zone codes...`);
-    
-    const processedWarnings = [];
-    
-    for (const warning of warningsWithoutGeometry) {
-        try {
-            // Get UGC codes from geocode field
-            const ugcCodes = warning.properties.geocode?.UGC || [];
-            
-            if (ugcCodes.length === 0) {
-                console.warn('Warning has no UGC codes:', warning.properties.event);
-                continue;
-            }
-            
-            console.log(`Fetching ${ugcCodes.length} zones for ${warning.properties.event}`);
-            
-            // Fetch geometries for all zones (limit to first 20 to avoid overwhelming API)
-            const zonesToFetch = ugcCodes.slice(0, 20);
-            const geometries = await Promise.all(
-                zonesToFetch.map(zoneId => fetchZoneGeometry(zoneId))
-            );
-            
-            // Filter out null geometries
-            const validGeometries = geometries.filter(g => g !== null);
-            
-            if (validGeometries.length === 0) {
-                console.warn(`⚠️ ${warning.properties.event}: 0/${zonesToFetch.length} zones found`);
-                continue;
-            }
-            
-            console.log(`✓ ${warning.properties.event}: ${validGeometries.length}/${zonesToFetch.length} zones loaded`);
-            
-            // Combine all zone geometries into a MultiPolygon
-            const allCoordinates = [];
-            validGeometries.forEach(geom => {
-                if (geom.type === 'Polygon') {
-                    allCoordinates.push(geom.coordinates);
-                } else if (geom.type === 'MultiPolygon') {
-                    geom.coordinates.forEach(poly => allCoordinates.push(poly));
-                }
-            });
-            
-            const combinedGeometry = {
-                type: 'MultiPolygon',
-                coordinates: allCoordinates
-            };
-            
-            // Create new warning feature with geometry
-            processedWarnings.push({
-                type: 'Feature',
-                properties: warning.properties,
-                geometry: combinedGeometry
-            });
-            
-            console.log(`✓ Processed ${warning.properties.event} with ${validGeometries.length} zones`);
-            
-        } catch (error) {
-            console.error('Error processing warning:', error);
-        }
-    }
-    
-    console.log(`Successfully processed ${processedWarnings.length} warnings`);
-    return processedWarnings;
-}
-
-
 async function fetchAndDisplayWatches() {
     try {
         console.log('Fetching watches for zone geometry processing...');
@@ -3115,31 +3036,6 @@ async function fetchAndDisplayWatches() {
         
         // Process watches and get geometries
         const processedWatches = await processWatchesWithZones(allAlerts);
-        
-        // Process warnings without geometry - WITH RETRY
-        let processedWarnings = [];
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (processedWarnings.length === 0 && retryCount < maxRetries) {
-            processedWarnings = await processWarningsWithZones(allAlerts);
-            
-            if (processedWarnings.length === 0 && retryCount < maxRetries - 1) {
-                retryCount++;
-                console.log(`[Warnings] Retry ${retryCount}/${maxRetries} in 2 seconds...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } else {
-                break;
-            }
-        }
-        
-        // Merge processed warnings back into allAlerts so they show on map
-        if (processedWarnings.length > 0) {
-            allAlerts.push(...processedWarnings);
-            console.log(`✓ Added ${processedWarnings.length} warnings with zone geometry to map`);
-        } else if (retryCount > 0) {
-            console.warn('⚠️ Could not fetch warning geometry after retries');
-        }
         
         // Add watches to map
         if (processedWatches.length > 0) {
@@ -4292,43 +4188,6 @@ if (map) {
 
 console.log('[Map Zoom] 🎙️ Map zoom control system initialized');
 console.log('[Map Zoom] 📡 Listening for zoom commands from broadcaster');
-
-// ============================================
-// PERIODIC WARNING GEOMETRY RETRY
-// ============================================
-// Retry warning geometry fetch every 30 seconds until successful
-let warningGeometryRetries = 0;
-const warningGeometryInterval = setInterval(async () => {
-    if (warningGeometryRetries >= 10) {
-        console.log('[Warnings] ✓ Stopped retrying after 10 attempts');
-        clearInterval(warningGeometryInterval);
-        return;
-    }
-    
-    try {
-        // Check if we have warnings without polygons visible
-        const warningsOnMap = map.querySourceFeatures('alerts', {
-            filter: ['all',
-                ['has', 'event'],
-                ['in', 'warning', ['downcase', ['get', 'event']]]
-            ]
-        });
-        
-        if (warningsOnMap.length === 0) {
-            console.log('[Warnings] 🔄 No warnings visible, retrying zone fetch...');
-            await fetchAndDisplayWatches();
-            warningGeometryRetries++;
-        } else {
-            console.log('[Warnings] ✓ Warnings are visible, stopping retry');
-            clearInterval(warningGeometryInterval);
-        }
-    } catch (error) {
-        console.warn('[Warnings] Retry check error:', error);
-        warningGeometryRetries++;
-    }
-}, 30000); // Every 30 seconds
-
-console.log('[Warnings] 🔄 Periodic warning geometry retry enabled (30s intervals)');
 
 </script>
 
