@@ -4,7 +4,7 @@ Improved expiration tracking with countdown warnings and all-clear announcements
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ class EnhancedAlertExpiration:
             Dictionary with expiration analysis
         """
         try:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             analysis = {
                 'expiring_soon': [],      # Alerts expiring in <30 min

@@ -5,7 +5,7 @@ Tracks alert patterns and identifies severe weather outbreaks
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from collections import defaultdict, Counter
 
@@ -33,7 +33,7 @@ class AlertTrendAnalyzer:
         try:
             alert_record = {
                 'event': alert.get('event', ''),
-                'timestamp': datetime.utcnow(),
+                'timestamp': datetime.now(timezone.utc),
                 'id': alert.get('id', ''),
                 'severity': alert.get('severity', ''),
                 'urgency': alert.get('urgency', ''),
@@ -50,7 +50,7 @@ class AlertTrendAnalyzer:
     
     def _cleanup_old_history(self):
         """Remove alerts older than max_history_hours"""
-        cutoff = datetime.utcnow() - timedelta(hours=self.max_history_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.max_history_hours)
         self.alert_history = [
             alert for alert in self.alert_history 
             if alert['timestamp'] > cutoff
@@ -86,7 +86,7 @@ class AlertTrendAnalyzer:
             }
             
             # Count alerts in different time windows
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             for alert in self.alert_history:
                 age = now - alert['timestamp']

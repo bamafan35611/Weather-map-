@@ -18,7 +18,7 @@ if not os.path.exists(os.path.dirname(DB_PATH)) and os.path.dirname(DB_PATH):
 
 def get_connection():
     """Get database connection with proper settings"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)  # 10 second timeout
     conn.row_factory = sqlite3.Row  # Return rows as dictionaries
     return conn
 
@@ -123,34 +123,53 @@ def save_forecast(forecast_data: Dict) -> int:
     Returns:
         Forecast ID
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    import time
     
-    cursor.execute('''
-        INSERT INTO forecasts (
-            timestamp, forecast_for, location, latitude, longitude,
-            prediction_type, predicted_event, predicted_severity,
-            confidence, details
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        forecast_data.get('timestamp', datetime.now().isoformat()),
-        forecast_data.get('forecast_for'),
-        forecast_data.get('location', 'Unknown'),
-        forecast_data.get('latitude'),
-        forecast_data.get('longitude'),
-        forecast_data.get('prediction_type', 'weather_event'),
-        forecast_data.get('predicted_event'),
-        forecast_data.get('predicted_severity', 'moderate'),
-        forecast_data.get('confidence', 0.0),
-        json.dumps(forecast_data.get('details', {}))
-    ))
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO forecasts (
+                    timestamp, forecast_for, location, latitude, longitude,
+                    prediction_type, predicted_event, predicted_severity,
+                    confidence, details
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                forecast_data.get('timestamp', datetime.now().isoformat()),
+                forecast_data.get('forecast_for'),
+                forecast_data.get('location', 'Unknown'),
+                forecast_data.get('latitude'),
+                forecast_data.get('longitude'),
+                forecast_data.get('prediction_type', 'weather_event'),
+                forecast_data.get('predicted_event'),
+                forecast_data.get('predicted_severity', 'moderate'),
+                forecast_data.get('confidence', 0.0),
+                json.dumps(forecast_data.get('details', {}))
+            ))
+            
+            forecast_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            print(f"✓ Saved forecast #{forecast_id}: {forecast_data.get('predicted_event')} for {forecast_data.get('location')}")
+            return forecast_id
+            
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e) and attempt < max_retries - 1:
+                print(f"⚠️ Database locked, retrying... (attempt {attempt + 1}/{max_retries})")
+                time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                continue
+            else:
+                print(f"❌ Error saving forecast after {attempt + 1} attempts: {e}")
+                raise
+        except Exception as e:
+            print(f"❌ Error saving forecast: {e}")
+            raise
     
-    forecast_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    print(f"✓ Saved forecast #{forecast_id}: {forecast_data.get('predicted_event')} for {forecast_data.get('location')}")
-    return forecast_id
+    raise Exception("Failed to save forecast after maximum retries")
 
 def verify_forecast(forecast_id: int, actual_data: Dict) -> bool:
     """
