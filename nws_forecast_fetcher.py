@@ -537,7 +537,7 @@ def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, st
                     if wind_mph >= 5:
                         if wind_direction_str:
                             # Expand abbreviations like SSW to South-Southwest
-                            expanded_direction = self._expand_wind_direction(wind_direction_str)
+                            expanded_direction = fetcher._expand_wind_direction(wind_direction_str)
                             wind_text = f"winds {expanded_direction} at {wind_mph} miles per hour"
                         else:
                             wind_text = f"winds at {wind_mph} miles per hour"
