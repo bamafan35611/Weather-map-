@@ -1836,19 +1836,6 @@ def api_broadcast_scheduled():
                         })
                         print(f"✓ Added radar storm tracking to :15 broadcast")
                 
-                # 🆕 LIGHTNING + CONDITIONS
-                if LIGHTNING_DETECTOR_AVAILABLE:
-                    lightning = get_lightning_announcement()
-                    if lightning:
-                        broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
-                        print(f"✓ Added lightning to :15")
-                
-                if CURRENT_CONDITIONS_AVAILABLE:
-                    conditions = get_current_conditions_announcement()
-                    if conditions:
-                        broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
-                        print(f"✓ Added conditions to :15")
-                
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
                     city_briefing = None
@@ -2030,6 +2017,19 @@ def api_broadcast_scheduled():
                     
                     if city_briefing is None:
                         print(f"❌ All {max_city_attempts} city attempts failed, skipping city briefing")
+            
+            # 🆕 LIGHTNING + CONDITIONS (always check, regardless of alerts)
+            if LIGHTNING_DETECTOR_AVAILABLE:
+                lightning = get_lightning_announcement()
+                if lightning:
+                    broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
+                    print(f"✓ Added lightning to :15")
+            
+            if CURRENT_CONDITIONS_AVAILABLE:
+                conditions = get_current_conditions_announcement()
+                if conditions:
+                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                    print(f"✓ Added conditions to :15")
         
         # :30 - Hourly Update WITH LOCAL FORECAST
         elif current_minute == 30:
