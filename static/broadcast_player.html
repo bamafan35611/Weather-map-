@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NorthBamaWX Broadcast Player</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .player-container {
+            background: rgba(0,0,0,0.3);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 600px;
+        }
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 32px;
+        }
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .status.idle {
+            background: rgba(255, 193, 7, 0.3);
+            border: 2px solid #FFC107;
+        }
+        .status.speaking {
+            background: rgba(76, 175, 80, 0.3);
+            border: 2px solid #4CAF50;
+            animation: pulse 1.5s infinite;
+        }
+        .status.error {
+            background: rgba(244, 67, 54, 0.3);
+            border: 2px solid #f44336;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .next-broadcast {
+            font-size: 16px;
+            opacity: 0.8;
+            margin-top: 10px;
+        }
+        .log {
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .log-entry {
+            margin: 3px 0;
+            padding: 3px;
+            border-left: 2px solid #2196F3;
+            padding-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <h1>🎙️ NorthBamaWX Live</h1>
+        
+        <div id="status" class="status idle">
+            ⏳ Waiting for next broadcast...
+        </div>
+        
+        <div class="next-broadcast" id="next-broadcast">
+            Next broadcast at :00
+        </div>
+
+        <div class="log" id="log">
+            <div class="log-entry">Broadcast player initialized</div>
+        </div>
+    </div>
+
+    <script>
+        let selectedVoice = null;
+        let isSpeaking = false;
+        let broadcastInterval = null;
+
+        // Load Edge neural voice
+        function loadVoices() {
+            const voices = speechSynthesis.getVoices();
+            
+            // Prefer Microsoft Andrew Online (Natural)
+            const preferredVoices = [
+                'Microsoft Andrew Online (Natural) - English (United States)',
+                'Microsoft Andrew - English (United States)',
+                'Microsoft Aria Online (Natural) - English (United States)',
+                'Microsoft Aria - English (United States)'
+            ];
+
+            for (const preferred of preferredVoices) {
+                const voice = voices.find(v => v.name === preferred);
+                if (voice) {
+                    selectedVoice = voice;
+                    addLog(`✅ Voice loaded: ${voice.name}`);
+                    break;
+                }
+            }
+
+            if (!selectedVoice && voices.length > 0) {
+                selectedVoice = voices.find(v => v.lang.startsWith('en-US')) || voices[0];
+                addLog(`✅ Fallback voice: ${selectedVoice.name}`);
+            }
+        }
+
+        // Load voices when available
+        if (speechSynthesis.getVoices().length > 0) {
+            loadVoices();
+        }
+        speechSynthesis.onvoiceschanged = loadVoices;
+
+        // Fetch and play broadcast
+        async function fetchAndPlayBroadcast() {
+            if (isSpeaking) {
+                addLog('⏸️ Still speaking, skipping this cycle');
+                return;
+            }
+
+            try {
+                addLog('📡 Fetching broadcast from API...');
+                const response = await fetch('/api/broadcast/scheduled');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                if (!data.success) {
+                    addLog(`⚠️ ${data.message || 'No broadcast available'}`);
+                    updateStatus('idle', '⏳ Waiting for next broadcast...');
+                    return;
+                }
+
+                // Get combined text
+                const text = data.combined_text || data.message || '';
+                
+                if (!text || text.trim().length === 0) {
+                    addLog('⚠️ Empty broadcast received');
+                    return;
+                }
+
+                addLog(`📢 Received: "${text.substring(0, 50)}..."`);
+                speak(text);
+
+            } catch (error) {
+                addLog(`❌ Error: ${error.message}`);
+                updateStatus('error', '❌ Connection error');
+            }
+        }
+
+        // Speak text using Edge TTS
+        function speak(text) {
+            if (!selectedVoice) {
+                addLog('❌ No voice available!');
+                return;
+            }
+
+            if (isSpeaking) {
+                speechSynthesis.cancel();
+            }
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = selectedVoice;
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+
+            utterance.onstart = () => {
+                isSpeaking = true;
+                updateStatus('speaking', '🎙️ Broadcasting...');
+                addLog('🎙️ Started speaking');
+            };
+
+            utterance.onend = () => {
+                isSpeaking = false;
+                updateStatus('idle', '⏳ Waiting for next broadcast...');
+                addLog('✅ Finished speaking');
+                updateNextBroadcastTime();
+            };
+
+            utterance.onerror = (error) => {
+                isSpeaking = false;
+                updateStatus('error', '❌ Speech error');
+                addLog(`❌ Speech error: ${error.error}`);
+            };
+
+            speechSynthesis.speak(utterance);
+        }
+
+        // Update status display
+        function updateStatus(className, text) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = `status ${className}`;
+            statusEl.textContent = text;
+        }
+
+        // Add log entry
+        function addLog(message) {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = `[${timestamp}] ${message}`;
+            logEl.appendChild(entry);
+            logEl.scrollTop = logEl.scrollHeight;
+
+            // Keep only last 30 entries
+            while (logEl.children.length > 30) {
+                logEl.removeChild(logEl.firstChild);
+            }
+        }
+
+        // Calculate next broadcast time
+        function getNextBroadcastMinute() {
+            const now = new Date();
+            const minute = now.getMinutes();
+            
+            // Broadcasts at :00, :15, :30, :45
+            if (minute < 15) return 15;
+            if (minute < 30) return 30;
+            if (minute < 45) return 45;
+            return 0; // Next hour
+        }
+
+        // Update next broadcast time display
+        function updateNextBroadcastTime() {
+            const nextMinute = getNextBroadcastMinute();
+            const now = new Date();
+            const currentMinute = now.getMinutes();
+            
+            let displayText;
+            if (nextMinute === 0) {
+                displayText = 'Next broadcast at :00';
+            } else {
+                displayText = `Next broadcast at :${nextMinute.toString().padStart(2, '0')}`;
+            }
+            
+            const minutesUntil = nextMinute === 0 ? 
+                (60 - currentMinute) : 
+                (nextMinute - currentMinute);
+            
+            displayText += ` (${minutesUntil} min)`;
+            
+            document.getElementById('next-broadcast').textContent = displayText;
+        }
+
+        // Check if it's time to broadcast
+        function checkBroadcastTime() {
+            const now = new Date();
+            const minute = now.getMinutes();
+            const second = now.getSeconds();
+            
+            // Broadcast at :00, :15, :30, :45 when seconds reach 0-5
+            if ((minute % 15 === 0) && second <= 5) {
+                fetchAndPlayBroadcast();
+            }
+            
+            updateNextBroadcastTime();
+        }
+
+        // Initialize
+        addLog('🚀 Broadcast player started');
+        addLog('📻 Monitoring for broadcasts at :00, :15, :30, :45');
+        updateNextBroadcastTime();
+
+        // Check every second for broadcast time
+        setInterval(checkBroadcastTime, 1000);
+
+        // Keep page awake
+        setInterval(() => {
+            // Prevents tab suspension
+        }, 30000);
+
+        // Initial voice load
+        setTimeout(() => {
+            if (!selectedVoice) {
+                loadVoices();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
