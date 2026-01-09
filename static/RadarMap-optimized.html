@@ -242,6 +242,7 @@ const VOICE_RELAY_URL = 'ws://localhost:8765';
 
 let voiceRelayWS = null;
 let voiceRelayConnected = false;
+let voiceRelayConnecting = false; // NEW: Prevent duplicate connections
 let map;
 let speechEnabled = true;
 let backendConnected = false;
@@ -257,12 +258,21 @@ function connectVoiceRelay() {
         return;
     }
 
+    // GUARD: Prevent duplicate connections
+    if (voiceRelayConnecting || (voiceRelayWS && voiceRelayWS.readyState === WebSocket.OPEN)) {
+        console.log('[voice-relay] Already connected or connecting, skipping...');
+        return;
+    }
+
+    voiceRelayConnecting = true;
+
     try {
         console.log(`[voice-relay] Connecting to ${VOICE_RELAY_URL}...`);
         voiceRelayWS = new WebSocket(VOICE_RELAY_URL);
 
         voiceRelayWS.onopen = () => {
             voiceRelayConnected = true;
+            voiceRelayConnecting = false;
             console.log('[voice-relay] ✅ Connected to relay server');
             
             voiceRelayWS.send(JSON.stringify({
@@ -285,16 +295,19 @@ function connectVoiceRelay() {
 
         voiceRelayWS.onerror = (error) => {
             voiceRelayConnected = false;
+            voiceRelayConnecting = false;
             console.error('[voice-relay] WebSocket error - is relay server running?');
         };
 
         voiceRelayWS.onclose = () => {
             voiceRelayConnected = false;
+            voiceRelayConnecting = false;
             console.log('[voice-relay] Disconnected. Reconnecting in 5 seconds...');
             setTimeout(connectVoiceRelay, 5000);
         };
     } catch (error) {
         voiceRelayConnected = false;
+        voiceRelayConnecting = false;
         console.error('[voice-relay] Connection failed:', error);
         setTimeout(connectVoiceRelay, 5000);
     }
