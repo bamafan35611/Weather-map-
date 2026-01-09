@@ -2628,19 +2628,49 @@ function checkForBriefing() {
         if (timeSinceLastCheck > 60000) { // More than 1 minute since last check
             console.log(`[Briefing] ⏰ Briefing time detected (XX:${minute.toString().padStart(2, '0')})`);
             
-            // Trigger appropriate broadcast based on minute
-            if (minute === 0) {
-                runTopOfHourUpdate();
-            } else if (minute === 15) {
-                runQuarterPastUpdate();
-            } else if (minute === 30) {
-                runHalfPastUpdate();
-            } else if (minute === 45) {
-                runQuarterTillUpdate();
-            }
+            // Call Python backend instead of JavaScript narrator
+            runPythonBackendBroadcast();
             
             _lastBriefingCheck = currentTime;
         }
+    }
+}
+
+// NEW: Call Python Flask backend for broadcasts
+async function runPythonBackendBroadcast() {
+    try {
+        console.log('[Python Backend] Fetching broadcast from /api/broadcast/scheduled');
+        const response = await fetch('/api/broadcast/scheduled');
+        
+        if (!response.ok) {
+            console.error('[Python Backend] HTTP error:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success || !data.combined_text) {
+            console.log('[Python Backend] No broadcast available');
+            return;
+        }
+        
+        const text = data.combined_text;
+        console.log(`[Python Backend] Got broadcast: ${text.substring(0, 50)}...`);
+        
+        // Send to voice relay for Edge TTS
+        if (typeof voiceRelayWS !== 'undefined' && voiceRelayWS && voiceRelayWS.readyState === WebSocket.OPEN) {
+            voiceRelayWS.send(JSON.stringify({
+                type: 'speak',
+                text: text,
+                rate: 1.0
+            }));
+            console.log('[Python Backend] Sent to voice relay');
+        } else {
+            console.warn('[Python Backend] Voice relay not connected!');
+        }
+        
+    } catch (error) {
+        console.error('[Python Backend] Error:', error);
     }
 }
 
