@@ -299,14 +299,14 @@ except ImportError as e:
     get_current_conditions_announcement = lambda: None
     should_announce_current_conditions = lambda: False
 
-# Import lightning detector (real-time lightning strike monitoring)
+# Import lightning detector (infers from weather station thunderstorm reports)
 try:
     from lightning_detector import (
         get_lightning_announcement,
         get_lightning_detector
     )
     LIGHTNING_DETECTOR_AVAILABLE = True
-    print("✓ Lightning detector loaded")
+    print("✓ Lightning detector loaded (no API key required)")
 except ImportError as e:
     print(f"⚠ Lightning detector not available: {e}")
     LIGHTNING_DETECTOR_AVAILABLE = False
@@ -1832,7 +1832,7 @@ def api_broadcast_scheduled():
                         })
                         print(f"✓ Added radar storm tracking to :15 broadcast")
                 
-                # 🆕 LIGHTNING DETECTION (real-time lightning strikes)
+                # 🆕 LIGHTNING DETECTION (inferred from weather station thunderstorms)
                 if LIGHTNING_DETECTOR_AVAILABLE:
                     lightning_announcement = get_lightning_announcement()
                     if lightning_announcement:
@@ -1844,7 +1844,7 @@ def api_broadcast_scheduled():
                         })
                         print(f"✓ Added lightning detection to :15 broadcast")
                 
-                # 🆕 CURRENT CONDITIONS MONITOR (announce rain/storms without alerts)
+                # 🆕 CURRENT CONDITIONS MONITOR (rain/storms without alerts)
                 if CURRENT_CONDITIONS_AVAILABLE and len(alerts_to_announce) == 0:
                     conditions_announcement = get_current_conditions_announcement()
                     if conditions_announcement:
