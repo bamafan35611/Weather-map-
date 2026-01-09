@@ -284,6 +284,21 @@ except ImportError as e:
     AIR_QUALITY_AVAILABLE = False
     get_aqi_announcement = lambda **kwargs: None
 
+# Import current conditions monitor (announces rain/storms without alerts)
+try:
+    from current_conditions_monitor import (
+        get_current_conditions_announcement, 
+        should_announce_current_conditions,
+        get_conditions_monitor
+    )
+    CURRENT_CONDITIONS_AVAILABLE = True
+    print("✓ Current conditions monitor loaded")
+except ImportError as e:
+    print(f"⚠ Current conditions not available: {e}")
+    CURRENT_CONDITIONS_AVAILABLE = False
+    get_current_conditions_announcement = lambda: None
+    should_announce_current_conditions = lambda: False
+
 # Import impact predictor (Phase 3)
 try:
     from impact_predictor import get_alert_impact
@@ -1803,6 +1818,18 @@ def api_broadcast_scheduled():
                             'duration_estimate': '15-25 seconds'
                         })
                         print(f"✓ Added radar storm tracking to :15 broadcast")
+                
+                # 🆕 CURRENT CONDITIONS MONITOR (announce rain/storms without alerts)
+                if CURRENT_CONDITIONS_AVAILABLE and len(alerts_to_announce) == 0:
+                    conditions_announcement = get_current_conditions_announcement()
+                    if conditions_announcement:
+                        broadcast_data['content'].append({
+                            'type': 'current_conditions',
+                            'text': conditions_announcement,
+                            'voice_style': 'calm',
+                            'duration_estimate': '15-20 seconds'
+                        })
+                        print(f"✓ Added current conditions to :15 broadcast")
                 
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
