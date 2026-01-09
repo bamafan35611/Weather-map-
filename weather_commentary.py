@@ -133,7 +133,13 @@ class WeatherCommentary:
         
         lines = []
         lines.append(f"Let's check in on the {region}.")
-        lines.append(f"We're tracking {len(region_alerts)} active alerts in this region.")
+        
+        if len(region_alerts) == 1:
+            # Specify the single alert type
+            alert_type = region_alerts[0].get('event', 'weather alert')
+            lines.append(f"We're tracking a {alert_type} in this region.")
+        else:
+            lines.append(f"We're tracking {len(region_alerts)} active alerts in this region.")
         
         # Describe the situation
         for alert in region_alerts[:3]:  # Top 3
@@ -263,7 +269,12 @@ class WeatherCommentary:
         # Local check
         local_alerts = self._filter_by_location(alerts, local_area)
         if local_alerts:
-            lines.append(f"Here in {local_area}, we have {len(local_alerts)} active alert{'s' if len(local_alerts) > 1 else ''}.")
+            if len(local_alerts) == 1:
+                # Specify the alert type when there's only one
+                alert_type = local_alerts[0].get('event', 'weather alert')
+                lines.append(f"Here in {local_area}, we have a {alert_type} in effect.")
+            else:
+                lines.append(f"Here in {local_area}, we have {len(local_alerts)} active alert{'s' if len(local_alerts) > 1 else ''}.")
         else:
             lines.append(f"All clear here in {local_area}.")
         
