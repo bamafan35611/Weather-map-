@@ -103,7 +103,7 @@ except ImportError as e:
 
 # Import weather commentary system
 try:
-    from weather_commentary import WeatherCommentary, get_national_briefing, get_regional_briefing, get_hourly_update, get_weather_story
+    from weather_commentary import WeatherCommentary, get_regional_briefing, get_hourly_update, get_weather_story
     COMMENTARY_AVAILABLE = True
     print("✓ Weather commentary system loaded - Regional briefing enabled")
 except ImportError as e:
