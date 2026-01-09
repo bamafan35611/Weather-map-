@@ -250,6 +250,7 @@ let backendConnected = false;
 // Briefing coordination
 let _briefingInProgress = false;
 let _lastBriefingCheck = 0;
+let _lastBroadcastMinute = -1; // NEW: Track last broadcast minute
 
 // Connect to voice relay server
 function connectVoiceRelay() {
@@ -337,6 +338,17 @@ function checkForBriefing() {
 
 // Call Python Flask backend for broadcasts
 async function runPythonBackendBroadcast() {
+    const now = new Date();
+    const currentMinute = now.getMinutes();
+    
+    // GUARD: Prevent duplicate broadcasts in the same minute
+    if (currentMinute === _lastBroadcastMinute) {
+        console.log('[Python Backend] Already broadcast this minute, skipping...');
+        return;
+    }
+    
+    _lastBroadcastMinute = currentMinute;
+    
     try {
         console.log('[Python Backend] Fetching broadcast from /api/broadcast/scheduled');
         const response = await fetch('/api/broadcast/scheduled');
