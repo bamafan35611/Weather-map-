@@ -504,10 +504,12 @@ def get_regional_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
     ]
     lines.append(random.choice(openings))
     
-    # Alert count
+    # Alert count with type specification
     total = len(alerts)
     if total == 1:
-        lines.append("We're currently monitoring 1 active weather alert across the region.")
+        # Specify what the single alert is
+        alert_type = alerts[0].get('event', 'weather alert')
+        lines.append(f"We're currently monitoring a {alert_type} across the region.")
     else:
         lines.append(f"We're currently monitoring {total} active weather alerts across the region.")
     
