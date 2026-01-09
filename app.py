@@ -1521,7 +1521,8 @@ def api_broadcast_scheduled():
         }
         
         # :00 - Regional Briefing (North Alabama & Southern Tennessee) WITH HOLIDAY GREETINGS!
-        if current_minute == 0:
+        # Accept 3-minute grace period: :00-:02
+        if current_minute in [0, 1, 2]:
             briefing = get_regional_briefing(alerts, scored)
             
             # 🆕 ADD HOLIDAY GREETING IF APPLICABLE
@@ -1638,7 +1639,8 @@ def api_broadcast_scheduled():
                     print(f"✓ Added accuracy announcement to :00 broadcast")
         
         # :15 - Top Alerts with Voice Styles (🔧 NOW WITH COOLDOWN!)
-        elif current_minute == 15:
+        # Accept 3-minute grace period: :15-:17
+        elif current_minute in [15, 16, 17]:
             broadcast_data['broadcast_type'] = 'top_alerts'
             
             if len(scored) > 0:
@@ -2032,7 +2034,8 @@ def api_broadcast_scheduled():
                     print(f"✓ Added conditions to :15")
         
         # :30 - Hourly Update WITH LOCAL FORECAST
-        elif current_minute == 30:
+        # Accept 3-minute grace period: :30-:32
+        elif current_minute in [30, 31, 32]:
             broadcast_data['broadcast_type'] = 'hourly_update'
             broadcast_data['local_area'] = local_area
             
@@ -2096,7 +2099,8 @@ def api_broadcast_scheduled():
             #     })
         
         # :45 - Weather Story
-        elif current_minute == 45:
+        # Accept 3-minute grace period: :45-:47
+        elif current_minute in [45, 46, 47]:
             story = get_weather_story(alerts, scored)
             broadcast_data['broadcast_type'] = 'weather_story'
             broadcast_data['content'].append({
