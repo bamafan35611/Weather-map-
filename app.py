@@ -284,31 +284,21 @@ except ImportError as e:
     AIR_QUALITY_AVAILABLE = False
     get_aqi_announcement = lambda **kwargs: None
 
-# Import current conditions monitor (announces rain/storms without alerts)
+# Import current conditions monitor
 try:
-    from current_conditions_monitor import (
-        get_current_conditions_announcement, 
-        should_announce_current_conditions,
-        get_conditions_monitor
-    )
+    from current_conditions_monitor import get_current_conditions_announcement, get_conditions_monitor
     CURRENT_CONDITIONS_AVAILABLE = True
     print("✓ Current conditions monitor loaded")
 except ImportError as e:
-    print(f"⚠ Current conditions not available: {e}")
     CURRENT_CONDITIONS_AVAILABLE = False
     get_current_conditions_announcement = lambda: None
-    should_announce_current_conditions = lambda: False
 
-# Import lightning detector (infers from weather station thunderstorm reports)
+# Import lightning detector
 try:
-    from lightning_detector import (
-        get_lightning_announcement,
-        get_lightning_detector
-    )
+    from lightning_detector import get_lightning_announcement, get_lightning_detector
     LIGHTNING_DETECTOR_AVAILABLE = True
-    print("✓ Lightning detector loaded (no API key required)")
+    print("✓ Lightning detector loaded")
 except ImportError as e:
-    print(f"⚠ Lightning detector not available: {e}")
     LIGHTNING_DETECTOR_AVAILABLE = False
     get_lightning_announcement = lambda: None
 
@@ -1621,6 +1611,20 @@ def api_broadcast_scheduled():
                     })
                     print(f"✓ Added radar storm tracking to :00 broadcast")
             
+            # 🆕 LIGHTNING + CURRENT CONDITIONS
+            if LIGHTNING_DETECTOR_AVAILABLE:
+                lightning = get_lightning_announcement()
+                if lightning:
+                    broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
+                    print(f"✓ Added lightning to :00")
+            
+            if CURRENT_CONDITIONS_AVAILABLE:
+                conditions = get_current_conditions_announcement()
+                if conditions:
+                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                    print(f"✓ Added conditions to :00")
+                    print(f"✓ Added radar storm tracking to :00 broadcast")
+            
             # 🆕 ADD FORECAST ACCURACY ANNOUNCEMENT
             if ACCURACY_ANNOUNCEMENTS_AVAILABLE:
                 accuracy_announcement = get_accuracy_announcement()
@@ -1832,29 +1836,18 @@ def api_broadcast_scheduled():
                         })
                         print(f"✓ Added radar storm tracking to :15 broadcast")
                 
-                # 🆕 LIGHTNING DETECTION (inferred from weather station thunderstorms)
+                # 🆕 LIGHTNING + CONDITIONS
                 if LIGHTNING_DETECTOR_AVAILABLE:
-                    lightning_announcement = get_lightning_announcement()
-                    if lightning_announcement:
-                        broadcast_data['content'].append({
-                            'type': 'lightning_activity',
-                            'text': lightning_announcement,
-                            'voice_style': 'urgent',
-                            'duration_estimate': '15-20 seconds'
-                        })
-                        print(f"✓ Added lightning detection to :15 broadcast")
+                    lightning = get_lightning_announcement()
+                    if lightning:
+                        broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
+                        print(f"✓ Added lightning to :15")
                 
-                # 🆕 CURRENT CONDITIONS MONITOR (rain/storms without alerts)
-                if CURRENT_CONDITIONS_AVAILABLE and len(alerts_to_announce) == 0:
-                    conditions_announcement = get_current_conditions_announcement()
-                    if conditions_announcement:
-                        broadcast_data['content'].append({
-                            'type': 'current_conditions',
-                            'text': conditions_announcement,
-                            'voice_style': 'calm',
-                            'duration_estimate': '15-20 seconds'
-                        })
-                        print(f"✓ Added current conditions to :15 broadcast")
+                if CURRENT_CONDITIONS_AVAILABLE:
+                    conditions = get_current_conditions_announcement()
+                    if conditions:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        print(f"✓ Added conditions to :15")
                 
                 # 🆕 ADD RANDOM CITY BRIEFING AT :15 WITH FALLBACK
                 if FORECAST_FETCHER_AVAILABLE and LOCAL_CITIES_AVAILABLE:
@@ -2080,6 +2073,17 @@ def api_broadcast_scheduled():
                     'duration_estimate': '25-30 seconds'
                 })
             
+            # 🆕 LIGHTNING + CONDITIONS
+            if LIGHTNING_DETECTOR_AVAILABLE:
+                lightning = get_lightning_announcement()
+                if lightning:
+                    broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
+            
+            if CURRENT_CONDITIONS_AVAILABLE:
+                conditions = get_current_conditions_announcement()
+                if conditions:
+                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+            
             # COMMENTARY REMOVED - Was causing "Athens Alabama" pause glitch
             # At :30, we only want the local forecast
             # if COMMENTARY_AVAILABLE:
@@ -2112,6 +2116,17 @@ def api_broadcast_scheduled():
                         'duration_estimate': '5-10 seconds'
                     })
                     print(f"✓ Added expiration announcement for {len(expired_alerts)} alerts")
+            
+            # 🆕 LIGHTNING + CONDITIONS
+            if LIGHTNING_DETECTOR_AVAILABLE:
+                lightning = get_lightning_announcement()
+                if lightning:
+                    broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
+            
+            if CURRENT_CONDITIONS_AVAILABLE:
+                conditions = get_current_conditions_announcement()
+                if conditions:
+                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
         
         # Not a scheduled time
         else:
