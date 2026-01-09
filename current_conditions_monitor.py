@@ -39,6 +39,8 @@ class CurrentConditionsMonitor:
         Returns announcement text if there's notable weather to report.
         """
         try:
+            print("🌧️ Checking current conditions...")
+            
             # Gather observations from all stations
             station_reports = []
             
@@ -50,21 +52,32 @@ class CurrentConditionsMonitor:
                         'station': station_id,
                         'data': obs
                     })
+                    print(f"  ✓ {city}: {obs.get('weather', 'No weather data')}")
+                else:
+                    print(f"  ✗ {city}: Could not fetch observation")
             
             if not station_reports:
+                print("  ⚠️ No station reports available")
                 return None
             
             # Analyze conditions
             analysis = self._analyze_conditions(station_reports)
             
+            print(f"  Analysis: precip={analysis['has_precipitation']}, storms={analysis['has_storms']}, sig_weather={analysis['significant_weather']}")
+            
             # Generate announcement if there's something to report
             if analysis['has_precipitation'] or analysis['has_storms'] or analysis['significant_weather']:
-                return self._generate_conditions_announcement(analysis, station_reports)
+                announcement = self._generate_conditions_announcement(analysis, station_reports)
+                print(f"  ✅ Generated announcement: {announcement[:80]}...")
+                return announcement
             
+            print("  ℹ️ No significant weather to announce")
             return None
             
         except Exception as e:
             print(f"⚠️ Error getting regional conditions: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def _fetch_station_observation(self, station_id: str) -> Optional[Dict]:
@@ -190,6 +203,18 @@ class CurrentConditionsMonitor:
                 parts.append(f"Widespread rain across the region including {', '.join(analysis['rain_locations'][:3])}.")
             else:
                 parts.append(f"Light rain reported in parts of North Alabama.")
+        
+        elif analysis['summary_type'] == 'weather':
+            # Handle fog, mist, and other weather
+            weather_types = list(analysis['weather_types'])
+            if weather_types:
+                weather_desc = weather_types[0].lower()
+                if 'fog' in weather_desc:
+                    parts.append(f"Fog affecting the region with reduced visibility.")
+                elif 'mist' in weather_desc:
+                    parts.append(f"Mist and reduced visibility across parts of North Alabama.")
+                else:
+                    parts.append(f"{weather_desc.capitalize()} reported across the area.")
         
         # Add storm details if present (but not severe)
         if analysis['has_storms']:
