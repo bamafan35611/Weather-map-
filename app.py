@@ -299,6 +299,19 @@ except ImportError as e:
     get_current_conditions_announcement = lambda: None
     should_announce_current_conditions = lambda: False
 
+# Import lightning detector (real-time lightning strike monitoring)
+try:
+    from lightning_detector import (
+        get_lightning_announcement,
+        get_lightning_detector
+    )
+    LIGHTNING_DETECTOR_AVAILABLE = True
+    print("✓ Lightning detector loaded")
+except ImportError as e:
+    print(f"⚠ Lightning detector not available: {e}")
+    LIGHTNING_DETECTOR_AVAILABLE = False
+    get_lightning_announcement = lambda: None
+
 # Import impact predictor (Phase 3)
 try:
     from impact_predictor import get_alert_impact
@@ -1818,6 +1831,18 @@ def api_broadcast_scheduled():
                             'duration_estimate': '15-25 seconds'
                         })
                         print(f"✓ Added radar storm tracking to :15 broadcast")
+                
+                # 🆕 LIGHTNING DETECTION (real-time lightning strikes)
+                if LIGHTNING_DETECTOR_AVAILABLE:
+                    lightning_announcement = get_lightning_announcement()
+                    if lightning_announcement:
+                        broadcast_data['content'].append({
+                            'type': 'lightning_activity',
+                            'text': lightning_announcement,
+                            'voice_style': 'urgent',
+                            'duration_estimate': '15-20 seconds'
+                        })
+                        print(f"✓ Added lightning detection to :15 broadcast")
                 
                 # 🆕 CURRENT CONDITIONS MONITOR (announce rain/storms without alerts)
                 if CURRENT_CONDITIONS_AVAILABLE and len(alerts_to_announce) == 0:
