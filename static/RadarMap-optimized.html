@@ -181,8 +181,6 @@ header {
 <div id="threat-level">Threat: LOW</div>
 <div id="alerts-count">Alerts: 0</div>
 <div class="confidence-indicator" id="prediction-confidence">AI Confidence: 75%</div>
-<div class="next-briefing" id="next-briefing">Next: 60:00</div>
-<div class="next-alert-check" id="next-alert-check">Alert Check: 15:00</div>
 
 </div>
 <div class="weather-briefing" id="weather-briefing">
@@ -349,45 +347,8 @@ const US_REGIONS = {
     'Northeast': { center: [-73.0, 43.0], zoom: 6.0, states: ['NY', 'VT', 'NH', 'ME', 'MA', 'CT', 'RI'] }
 };
 
-// Countdown timers (global scope for scheduler access)
-let briefingCountdown = 3600;
-let alertCheckCountdown = 900;
+// Countdown update functions removed - using Python backend for broadcasts
 
-// Countdown update functions
-function updateBriefingCountdown() {
-    const minutes = Math.floor(briefingCountdown / 60);
-    const seconds = briefingCountdown % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    const briefingEl = document.getElementById('next-briefing');
-    if (briefingEl) {
-        briefingEl.textContent = `Next: ${timeString}`;
-    }
-    
-    briefingCountdown--;
-    if (briefingCountdown < 0) {
-        console.log("Hourly briefing countdown reached zero - triggering automated briefing");
-        briefingCountdown = 3600;
-        speakHourlyBriefing();
-    }
-}
-
-function updateAlertCheckCountdown() {
-    const minutes = Math.floor(alertCheckCountdown / 60);
-    const seconds = alertCheckCountdown % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    const alertCheckEl = document.getElementById('next-alert-check');
-    if (alertCheckEl) {
-        alertCheckEl.textContent = `Alert Check: ${timeString}`;
-    }
-    
-    alertCheckCountdown--;
-    if (alertCheckCountdown < 0) {
-        console.log("15-minute warning check countdown reached zero - re-zooming to most severe warning");
-        alertCheckCountdown = 900;
-        
-        performPeriodicAlertCheck();
-    }
-}
 
 
 
@@ -3722,10 +3683,6 @@ document.getElementById('test-button').addEventListener('click', async () => {
     // setInterval(fetchOutlooks, 300000); // moved to scheduler
     // setInterval(updateWeatherDisplay, 5000); // moved to scheduler
     
-    // Initialize countdown displays
-    updateBriefingCountdown();
-    updateAlertCheckCountdown();
-    
     // Start the main scheduler
     startScheduler();
     
@@ -3770,8 +3727,6 @@ function startScheduler() {
         }
         
         if (t % WEATHER_UPDATE_INTERVAL === 0) { try { updateWeatherDisplay(); } catch(e){} }
-        try { updateBriefingCountdown(); } catch(e){}
-        try { updateAlertCheckCountdown(); } catch(e){}
     }, 1000);
 }
 
