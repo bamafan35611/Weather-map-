@@ -16,6 +16,14 @@ import glob
 import pickle
 import threading
 from datetime import datetime, timedelta
+import pytz
+
+# Central Time Zone for Alabama
+CENTRAL_TZ = pytz.timezone('America/Chicago')
+
+def get_current_time():
+    """Get current time in Central Time (Alabama)"""
+    return datetime.now(CENTRAL_TZ)
 from collections import defaultdict
 from flask import Flask, send_from_directory, jsonify, request, Response
 from flask_cors import CORS
@@ -462,7 +470,7 @@ class AlertAnnouncementManager:
         if not alert_id:
             return False
         
-        current_time = datetime.now()
+        current_time = get_current_time()
         
         # Check if this is a new alert (never announced)
         if alert_id not in self.announced_alerts:
@@ -1324,7 +1332,7 @@ def api_commentary_regional():
             'commentary': briefing,
             'alert_count': len(alerts),
             'region': 'North Alabama & Southern Tennessee',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_current_time().isoformat()
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1349,7 +1357,7 @@ def api_commentary_national():
             'commentary': briefing,
             'alert_count': len(alerts),
             'note': 'This endpoint now returns regional briefings for North Alabama & Southern Tennessee',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_current_time().isoformat()
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1375,7 +1383,7 @@ def api_commentary_hourly():
             'commentary': update,
             'local_area': local_area,
             'alert_count': len(alerts),
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_current_time().isoformat()
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1397,7 +1405,7 @@ def api_commentary_story():
             'success': True,
             'commentary': story,
             'alert_count': len(alerts),
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_current_time().isoformat()
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -1501,7 +1509,7 @@ def api_broadcast_scheduled():
             alert_manager.cleanup_expired(active_ids)
         
         # Get current minute
-        current_minute = datetime.now().minute
+        current_minute = get_current_time().minute
         local_area = request.args.get('local_area', 'North Alabama')
         
         # 🆕 CHECK FOR ALERT EXPIRATIONS
@@ -1513,7 +1521,7 @@ def api_broadcast_scheduled():
         
         broadcast_data = {
             'success': True,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': get_current_time().isoformat(),
             'alert_count': len(alerts),
             'current_minute': current_minute,
             'broadcast_type': None,
