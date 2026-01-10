@@ -178,11 +178,29 @@ class NWSForecastFetcher:
         current_period = periods[0]
         next_period = periods[1] if len(periods) > 1 else None
         
+        # Safely get values
+        current_name = current_period.get('name', 'Now')
+        current_detailed = current_period.get('detailedForecast', 'No details available')
+        
+        # Type check
+        if not isinstance(current_name, str):
+            current_name = 'Now'
+        if not isinstance(current_detailed, str):
+            current_detailed = 'No details available'
+        
         # Build summary
-        summary = f"{current_period['name']}: {current_period['detailedForecast']}"
+        summary = f"{current_name}: {current_detailed}"
         
         if next_period:
-            summary += f" {next_period['name']}: {next_period['detailedForecast']}"
+            next_name = next_period.get('name', 'Later')
+            next_detailed = next_period.get('detailedForecast', 'No details available')
+            
+            if not isinstance(next_name, str):
+                next_name = 'Later'
+            if not isinstance(next_detailed, str):
+                next_detailed = 'No details available'
+            
+            summary += f" {next_name}: {next_detailed}"
         
         return summary
     
@@ -238,10 +256,17 @@ class NWSForecastFetcher:
         
         summaries = []
         for period in periods:
-            name = period['name']
-            short = period['shortForecast']
-            temp = period['temperature']
-            temp_unit = period['temperatureUnit']
+            # Safely extract values with defaults
+            name = period.get('name', 'Unknown')
+            short = period.get('shortForecast', 'conditions unknown')
+            temp = period.get('temperature', 'unknown')
+            temp_unit = period.get('temperatureUnit', 'F')
+            
+            # Type check strings
+            if not isinstance(name, str):
+                name = 'Unknown'
+            if not isinstance(short, str):
+                short = 'conditions unknown'
             
             summaries.append(f"{name}: {short}, {temp} degrees {temp_unit}")
         
@@ -372,7 +397,7 @@ class NWSForecastFetcher:
             return "Athens, Alabama forecast is temporarily unavailable. We'll update you when data is restored."
         
         # Get the first 2 periods (current + next)
-        periods = forecast['periods'][:2]
+        periods = forecast.get('periods', [])[:2]
         
         if not periods:
             return "Athens, Alabama forecast data is incomplete. Checking back shortly."
@@ -380,12 +405,26 @@ class NWSForecastFetcher:
         # Build Athens-specific summary
         current = periods[0]
         
-        summary = f"Athens, Alabama: {current['name']}, {current['shortForecast']}. "
-        summary += f"High of {current['temperature']} degrees. "
+        # Safely extract values with type checking
+        name = current.get('name', 'Today')
+        short_forecast = current.get('shortForecast', 'conditions unknown')
+        temperature = current.get('temperature', 'unknown')
         
-        # Check if severe weather mentioned
-        if self.is_severe_weather_expected(forecast):
-            summary += "Potential for severe weather. Monitor conditions closely. "
+        # Ensure values are proper types
+        if not isinstance(name, str):
+            name = 'Today'
+        if not isinstance(short_forecast, str):
+            short_forecast = 'conditions unknown'
+        
+        summary = f"Athens, Alabama: {name}, {short_forecast}. "
+        summary += f"High of {temperature} degrees. "
+        
+        # Check if severe weather mentioned (with error handling)
+        try:
+            if self.is_severe_weather_expected(forecast):
+                summary += "Potential for severe weather. Monitor conditions closely. "
+        except Exception as e:
+            print(f"⚠️ Error checking severe weather: {e}")
         
         return summary
 
@@ -555,12 +594,24 @@ def get_city_briefing_with_conditions(city_name: str, lat: float, lon: float, st
             
             # Add forecast (current period)
             current_period = forecast_data['periods'][0]
-            briefing_parts.append(f"{current_period['name']}, {current_period['shortForecast']}.")
+            
+            # Safely extract values
+            name = current_period.get('name', 'Today')
+            short_forecast = current_period.get('shortForecast', 'conditions unknown')
+            temp = current_period.get('temperature', 'unknown')
+            temp_unit = current_period.get('temperatureUnit', 'F')
+            is_daytime = current_period.get('isDaytime', True)
+            
+            # Type check strings
+            if not isinstance(name, str):
+                name = 'Today'
+            if not isinstance(short_forecast, str):
+                short_forecast = 'conditions unknown'
+            
+            briefing_parts.append(f"{name}, {short_forecast}.")
             
             # Add high/low temperature
-            temp = current_period['temperature']
-            temp_unit = current_period['temperatureUnit']
-            temp_trend = "High" if current_period['isDaytime'] else "Low"
+            temp_trend = "High" if is_daytime else "Low"
             briefing_parts.append(f"{temp_trend} of {temp} degrees.")
             
             print(f"✅ Successfully fetched forecast for {city_name}")
