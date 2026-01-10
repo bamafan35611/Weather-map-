@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import re
 import json
+import pytz
+
+# Central Time Zone for accurate date calculations
+CENTRAL_TZ = pytz.timezone('America/Chicago')
 
 class SPCOutlookFetcher:
     """Fetches Storm Prediction Center outlooks - LOCAL ONLY"""
@@ -235,8 +239,10 @@ class SPCOutlookFetcher:
         return outlook
     
     def _get_valid_date(self, day: int) -> str:
-        """Get valid date for outlook"""
-        target_date = datetime.now() + timedelta(days=day-1)
+        """Get valid date for outlook - uses Central Time"""
+        # Use Central Time for accurate date calculations
+        now_central = datetime.now(CENTRAL_TZ)
+        target_date = now_central + timedelta(days=day-1)
         return target_date.strftime('%A, %B %d')
     
     def get_outlook_announcement(self, day: int = 2) -> Optional[str]:
