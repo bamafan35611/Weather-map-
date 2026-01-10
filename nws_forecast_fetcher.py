@@ -207,8 +207,13 @@ class NWSForecastFetcher:
         
         # Check first 3 periods (today + tonight + tomorrow)
         for period in forecast_data['periods'][:3]:
-            forecast_text = period.get('detailedForecast', '').lower()
-            short_text = period.get('shortForecast', '').lower()
+            # Safely get text fields with type checking
+            detailed = period.get('detailedForecast', '')
+            short = period.get('shortForecast', '')
+            
+            # Handle case where values might not be strings
+            forecast_text = detailed.lower() if isinstance(detailed, str) else ''
+            short_text = short.lower() if isinstance(short, str) else ''
             
             if any(keyword in forecast_text or keyword in short_text for keyword in severe_keywords):
                 return True
