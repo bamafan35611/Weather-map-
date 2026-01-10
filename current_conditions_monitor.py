@@ -124,12 +124,13 @@ class CurrentConditionsMonitor:
             'has_storms': False,
             'significant_weather': False,
             'rain_locations': [],
+            'drizzle_locations': [],
             'storm_locations': [],
             'weather_types': set(),
             'max_wind_gust': 0,
             'max_wind_location': None,
             'visibility_issues': [],
-            'summary_type': None  # 'rain', 'storms', 'mixed', 'weather'
+            'summary_type': None  # 'rain', 'drizzle', 'storms', 'mixed', 'weather'
         }
         
         for report in station_reports:
@@ -138,9 +139,12 @@ class CurrentConditionsMonitor:
             weather = (obs.get('weather', '') or '').lower()
             present = obs.get('present_weather', [])
             
-            # Check for precipitation
-            precip_keywords = ['rain', 'drizzle', 'showers', 'precipitation']
-            if any(kw in weather for kw in precip_keywords):
+            # Check for different types of precipitation
+            if 'drizzle' in weather or 'mist' in weather:
+                analysis['has_precipitation'] = True
+                analysis['drizzle_locations'].append(city)
+                analysis['weather_types'].add('drizzle')
+            elif 'rain' in weather or 'showers' in weather or 'precipitation' in weather:
                 analysis['has_precipitation'] = True
                 analysis['rain_locations'].append(city)
                 analysis['weather_types'].add('rain')
@@ -154,7 +158,7 @@ class CurrentConditionsMonitor:
                 analysis['weather_types'].add('storms')
             
             # Check for other significant weather
-            sig_keywords = ['fog', 'mist', 'haze', 'smoke', 'snow', 'sleet', 'freezing']
+            sig_keywords = ['fog', 'haze', 'smoke', 'snow', 'sleet', 'freezing']
             if any(kw in weather for kw in sig_keywords):
                 analysis['significant_weather'] = True
                 analysis['weather_types'].add(weather.split()[0])
@@ -170,11 +174,13 @@ class CurrentConditionsMonitor:
             if visibility and visibility < 5000:  # Less than ~3 miles
                 analysis['visibility_issues'].append(city)
         
-        # Determine summary type
+        # Determine summary type (prioritize heavier precipitation)
         if analysis['has_storms']:
             analysis['summary_type'] = 'storms'
-        elif analysis['has_precipitation']:
+        elif analysis['rain_locations']:
             analysis['summary_type'] = 'rain'
+        elif analysis['drizzle_locations']:
+            analysis['summary_type'] = 'drizzle'
         elif analysis['significant_weather']:
             analysis['summary_type'] = 'weather'
         
@@ -203,6 +209,14 @@ class CurrentConditionsMonitor:
                 parts.append(f"Widespread rain across the region including {', '.join(analysis['rain_locations'][:3])}.")
             else:
                 parts.append(f"Light rain reported in parts of North Alabama.")
+        
+        elif analysis['summary_type'] == 'drizzle':
+            if len(analysis['drizzle_locations']) == 1:
+                parts.append(f"Light drizzle reported near {analysis['drizzle_locations'][0]}.")
+            elif len(analysis['drizzle_locations']) == 2:
+                parts.append(f"Light drizzle across {analysis['drizzle_locations'][0]} and {analysis['drizzle_locations'][1]}.")
+            else:
+                parts.append(f"Drizzle and mist across parts of the region.")
         
         elif analysis['summary_type'] == 'weather':
             # Handle fog, mist, and other weather
