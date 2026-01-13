@@ -1640,10 +1640,46 @@ def api_broadcast_scheduled():
             
             if CURRENT_CONDITIONS_AVAILABLE:
                 conditions = get_current_conditions_announcement()
-                if conditions:
-                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
-                    print(f"✓ Added conditions to :00")
-                    print(f"✓ Added radar storm tracking to :00 broadcast")
+                
+                # 🤖 ALWAYS USE AI BROADCASTER
+                if AI_BROADCASTER_AVAILABLE:
+                    try:
+                        if conditions:
+                            ai_data = {
+                                'time_period': 'top of the hour',
+                                'conditions': conditions,
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                        else:
+                            ai_data = {
+                                'time_period': 'top of the hour',
+                                'conditions': 'Clear skies across the region',
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                        
+                        ai_broadcast = generate_ai_broadcast(ai_data)
+                        if ai_broadcast:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': ai_broadcast, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                            print(f"✓ Added AI-generated conditions to :00")
+                        elif conditions:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                            print(f"✓ Added conditions to :00 (template)")
+                        else:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet across the region.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
+                    except Exception as e:
+                        print(f"⚠️ AI broadcaster failed: {e}")
+                        if conditions:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        else:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
+                else:
+                    if conditions:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        print(f"✓ Added conditions to :00")
+                    else:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet across the region.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
             
             # 🆕 ADD FORECAST ACCURACY ANNOUNCEMENT
             if ACCURACY_ANNOUNCEMENTS_AVAILABLE:
@@ -2048,36 +2084,55 @@ def api_broadcast_scheduled():
             
             if CURRENT_CONDITIONS_AVAILABLE:
                 conditions = get_current_conditions_announcement()
-                if conditions:
-                    # 🤖 TRY AI BROADCASTER FOR MORE NATURAL ANNOUNCEMENTS
-                    if AI_BROADCASTER_AVAILABLE:
-                        try:
-                            # Prepare data for AI
+                
+                # 🤖 ALWAYS USE AI BROADCASTER (even for "all clear" messages)
+                if AI_BROADCASTER_AVAILABLE:
+                    try:
+                        # Prepare data for AI
+                        if conditions:
+                            # There's weather to report
                             ai_data = {
                                 'time_period': 'quarter past the hour',
                                 'conditions': conditions,
                                 'has_alerts': False,
                                 'has_warnings': False
                             }
-                            
-                            # Generate AI broadcast
-                            ai_broadcast = generate_ai_broadcast(ai_data)
-                            
-                            if ai_broadcast:
-                                # Use AI-generated text
-                                broadcast_data['content'].append({'type': 'current_conditions', 'text': ai_broadcast, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
-                                print(f"✓ Added AI-generated conditions to :15")
-                            else:
-                                # Fallback to template
-                                broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
-                                print(f"✓ Added conditions to :15 (template)")
-                        except Exception as e:
-                            print(f"⚠️ AI broadcaster failed: {e}, using template")
+                        else:
+                            # No weather - AI will generate "all clear" message
+                            ai_data = {
+                                'time_period': 'quarter past the hour',
+                                'conditions': 'Clear skies across the region',
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                        
+                        # Generate AI broadcast
+                        ai_broadcast = generate_ai_broadcast(ai_data)
+                        
+                        if ai_broadcast:
+                            # Use AI-generated text
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': ai_broadcast, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                            print(f"✓ Added AI-generated conditions to :15")
+                        elif conditions:
+                            # Fallback to template if AI fails and we have conditions
                             broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
-                    else:
-                        # No AI available, use template
+                            print(f"✓ Added conditions to :15 (template)")
+                        else:
+                            # No AI and no conditions - use simple message
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet across North Alabama at this hour.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
+                    except Exception as e:
+                        print(f"⚠️ AI broadcaster failed: {e}, using template")
+                        if conditions:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        else:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet across the region.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
+                else:
+                    # No AI available - use templates
+                    if conditions:
                         broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
                         print(f"✓ Added conditions to :15")
+                    else:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet across the region.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
         
         # :30 - Hourly Update WITH LOCAL FORECAST
         # Accept 3-minute grace period: :30-:32
@@ -2194,8 +2249,44 @@ def api_broadcast_scheduled():
             
             if CURRENT_CONDITIONS_AVAILABLE:
                 conditions = get_current_conditions_announcement()
-                if conditions:
-                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                
+                # 🤖 ALWAYS USE AI BROADCASTER
+                if AI_BROADCASTER_AVAILABLE:
+                    try:
+                        if conditions:
+                            ai_data = {
+                                'time_period': 'quarter till the hour',
+                                'conditions': conditions,
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                        else:
+                            ai_data = {
+                                'time_period': 'quarter till the hour',
+                                'conditions': 'Clear skies across the region',
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                        
+                        ai_broadcast = generate_ai_broadcast(ai_data)
+                        if ai_broadcast:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': ai_broadcast, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                            print(f"✓ Added AI-generated conditions to :45")
+                        elif conditions:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        else:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
+                    except Exception as e:
+                        print(f"⚠️ AI broadcaster failed: {e}")
+                        if conditions:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        else:
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
+                else:
+                    if conditions:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                    else:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': 'Conditions remain quiet.', 'voice_style': 'calm', 'duration_estimate': '10 seconds'})
         
         # Not a scheduled time
         else:
