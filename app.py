@@ -301,6 +301,17 @@ except ImportError as e:
     CURRENT_CONDITIONS_AVAILABLE = False
     get_current_conditions_announcement = lambda: None
 
+# Import AI broadcaster (optional - uses Groq API for natural broadcasts)
+try:
+    from ai_broadcaster import generate_ai_broadcast, get_ai_broadcaster
+    AI_BROADCASTER_AVAILABLE = True
+    print("✓ AI Broadcaster loaded (Groq - makes announcements more natural)")
+except Exception as e:
+    AI_BROADCASTER_AVAILABLE = False
+    generate_ai_broadcast = None
+    print(f"⚠ AI Broadcaster not available: {e}")
+    print("  → Broadcasts will use standard templates")
+
 # Import lightning detector
 try:
     from lightning_detector import get_lightning_announcement, get_lightning_detector
@@ -2038,8 +2049,35 @@ def api_broadcast_scheduled():
             if CURRENT_CONDITIONS_AVAILABLE:
                 conditions = get_current_conditions_announcement()
                 if conditions:
-                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
-                    print(f"✓ Added conditions to :15")
+                    # 🤖 TRY AI BROADCASTER FOR MORE NATURAL ANNOUNCEMENTS
+                    if AI_BROADCASTER_AVAILABLE:
+                        try:
+                            # Prepare data for AI
+                            ai_data = {
+                                'time_period': 'quarter past the hour',
+                                'conditions': conditions,
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                            
+                            # Generate AI broadcast
+                            ai_broadcast = generate_ai_broadcast(ai_data)
+                            
+                            if ai_broadcast:
+                                # Use AI-generated text
+                                broadcast_data['content'].append({'type': 'current_conditions', 'text': ai_broadcast, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                                print(f"✓ Added AI-generated conditions to :15")
+                            else:
+                                # Fallback to template
+                                broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                                print(f"✓ Added conditions to :15 (template)")
+                        except Exception as e:
+                            print(f"⚠️ AI broadcaster failed: {e}, using template")
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                    else:
+                        # No AI available, use template
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        print(f"✓ Added conditions to :15")
         
         # :30 - Hourly Update WITH LOCAL FORECAST
         # Accept 3-minute grace period: :30-:32
@@ -2093,7 +2131,26 @@ def api_broadcast_scheduled():
             if CURRENT_CONDITIONS_AVAILABLE:
                 conditions = get_current_conditions_announcement()
                 if conditions:
-                    broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                    # 🤖 TRY AI BROADCASTER FOR MORE NATURAL ANNOUNCEMENTS
+                    if AI_BROADCASTER_AVAILABLE:
+                        try:
+                            ai_data = {
+                                'time_period': 'half past the hour',
+                                'conditions': conditions,
+                                'has_alerts': False,
+                                'has_warnings': False
+                            }
+                            ai_broadcast = generate_ai_broadcast(ai_data)
+                            if ai_broadcast:
+                                broadcast_data['content'].append({'type': 'current_conditions', 'text': ai_broadcast, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                                print(f"✓ Added AI-generated conditions to :30")
+                            else:
+                                broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                        except Exception as e:
+                            print(f"⚠️ AI broadcaster: {e}")
+                            broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
+                    else:
+                        broadcast_data['content'].append({'type': 'current_conditions', 'text': conditions, 'voice_style': 'calm', 'duration_estimate': '15-20 seconds'})
             
             # COMMENTARY REMOVED - Was causing "Athens Alabama" pause glitch
             # At :30, we only want the local forecast
