@@ -115,6 +115,23 @@ TONE: Professional meteorologist, calm, informative, slightly conversational"""
         
         parts = []
         
+        # Add current season context
+        from datetime import datetime
+        import pytz
+        central = pytz.timezone('America/Chicago')
+        current_month = datetime.now(central).month
+        
+        if current_month in [12, 1, 2]:
+            season = "winter"
+        elif current_month in [3, 4, 5]:
+            season = "spring"
+        elif current_month in [6, 7, 8]:
+            season = "summer"
+        else:
+            season = "fall"
+        
+        parts.append(f"Current season: {season}")
+        
         # Time context
         time_period = weather_data.get('time_period', 'this hour')
         parts.append(f"Time: {time_period}")
@@ -138,7 +155,7 @@ TONE: Professional meteorologist, calm, informative, slightly conversational"""
         parts.append("Alert status: No active warnings or watches")
         
         prompt = "\n".join(parts)
-        prompt += "\n\nGenerate a natural weather broadcast announcement based on this information. Be concise and varied in your phrasing."
+        prompt += "\n\nGenerate a natural weather broadcast announcement based on this information. Be concise and varied in your phrasing. IMPORTANT: Use the correct season provided above - do NOT mention the wrong season!"
         
         return prompt
     

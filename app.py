@@ -2278,22 +2278,29 @@ def api_broadcast_scheduled():
         # :45 - Weather Story
         # Accept 3-minute grace period: :45-:47
         elif current_minute in [45, 46, 47]:
-            # Try to get weather story, with fallback
-            if COMMENTARY_AVAILABLE:
-                try:
-                    story = get_weather_story(alerts, scored)
-                except Exception as e:
-                    print(f"⚠️ Error getting weather story: {e}")
-                    story = "Taking advantage of the quiet weather today. Our automated monitoring continues across North Alabama."
+            # Only generate weather story if there ARE alerts
+            # If no alerts, skip the story and let AI describe actual conditions below
+            if alerts and len(alerts) > 0:
+                # Try to get weather story, with fallback
+                if COMMENTARY_AVAILABLE:
+                    try:
+                        story = get_weather_story(alerts, scored)
+                    except Exception as e:
+                        print(f"⚠️ Error getting weather story: {e}")
+                        story = "NorthBamaWX monitoring active weather across the region."
+                else:
+                    story = "NorthBamaWX monitoring active weather across the region."
+                
+                broadcast_data['broadcast_type'] = 'weather_story'
+                broadcast_data['content'].append({
+                    'type': 'commentary',
+                    'text': story,
+                    'duration_estimate': '30-60 seconds'
+                })
             else:
-                story = "Taking advantage of the quiet weather today. Our automated monitoring continues across North Alabama."
-            
-            broadcast_data['broadcast_type'] = 'weather_story'
-            broadcast_data['content'].append({
-                'type': 'commentary',
-                'text': story,
-                'duration_estimate': '30-60 seconds'
-            })
+                # No alerts - skip weather story, AI will describe conditions
+                broadcast_data['broadcast_type'] = 'conditions_update'
+                print("✓ No alerts - skipping weather story, using AI conditions")
             
             # 🆕 ANNOUNCE ALERT EXPIRATIONS IF ANY
             if EXPIRATION_TRACKING_AVAILABLE and expired_alerts:
