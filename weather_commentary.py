@@ -515,72 +515,72 @@ def get_regional_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
             "This is NorthBamaWX, monitoring weather across North Alabama and Southern Tennessee.",
         ]
         lines.append(random.choice(openings))
-    
-    # Alert count with type specification
-    total = len(alerts)
-    if total == 1:
-        # Specify what the single alert is
-        alert_type = alerts[0].get('event', 'weather alert')
-        lines.append(f"We're currently monitoring a {alert_type} across the region.")
-    else:
-        lines.append(f"We're currently monitoring {total} active weather alerts across the region.")
-    
-    # Severity breakdown
-    if scored_alerts:
-        high_threat = sum(1 for a in scored_alerts if a.get('threat_score', {}).get('score', 0) >= 70)
-        medium_threat = sum(1 for a in scored_alerts if 40 <= a.get('threat_score', {}).get('score', 0) < 70)
         
-        if high_threat > 0:
-            lines.append(f"{high_threat} high-priority alert{'s' if high_threat > 1 else ''} requiring immediate attention.")
-        elif medium_threat > 0:
-            lines.append(f"{medium_threat} moderate-priority alert{'s' if medium_threat > 1 else ''} across the area.")
-    
-    # Break down by state/area
-    al_alerts = [a for a in alerts if 'Alabama' in a.get('areaDesc', '')]
-    tn_alerts = [a for a in alerts if 'Tennessee' in a.get('areaDesc', '')]
-    
-    if al_alerts and tn_alerts:
-        lines.append(f"{len(al_alerts)} alert{'s' if len(al_alerts) != 1 else ''} in North Alabama, {len(tn_alerts)} in Southern Tennessee.")
-    elif al_alerts:
-        lines.append(f"All alerts are in North Alabama at this time.")
-    elif tn_alerts:
-        lines.append(f"All alerts are in Southern Tennessee at this time.")
-    
-    # Highlight top threats (top 2 for regional briefing)
-    if scored_alerts:
-        for i, alert in enumerate(scored_alerts[:2], 1):
-            event = alert.get('event', 'Weather Alert')
-            location = alert.get('areaDesc', 'the area')
-            # Simplify location to just counties
-            if ',' in location:
-                location = location.split(';')[0]  # Get first county if multiple
-            lines.append(f"{event} in effect for {location}.")
-    
-    # Alert type summary
-    alert_types = {}
-    for alert in alerts:
-        event = alert.get('event', 'Alert')
-        event_type = event.split()[0]  # Get first word
-        alert_types[event_type] = alert_types.get(event_type, 0) + 1
-    
-    if alert_types:
-        top_types = sorted(alert_types.items(), key=lambda x: x[1], reverse=True)[:2]
-        type_parts = [f"{count} {type_name.lower()}" for type_name, count in top_types]
-        if len(type_parts) == 1:
-            lines.append(f"Primary concern: {type_parts[0]}.")
+        # Alert count with type specification
+        total = len(alerts)
+        if total == 1:
+            # Specify what the single alert is
+            alert_type = alerts[0].get('event', 'weather alert')
+            lines.append(f"We're currently monitoring a {alert_type} across the region.")
         else:
-            lines.append(f"Primary concerns: {', '.join(type_parts)}.")
-    
-    # Closing - Regional focus
-    closings = [
-        "That's your regional weather update from NorthBamaWX. Stay weather aware.",
-        "We'll continue monitoring conditions across the region. Stay safe out there.",
-        "NorthBamaWX keeping you informed 24/7. More updates at the top and bottom of each hour.",
-        "Stay tuned for updates. This is NorthBamaWX, your regional weather intelligence.",
-    ]
-    lines.append(random.choice(closings))
-    
-    # Clean and return
+            lines.append(f"We're currently monitoring {total} active weather alerts across the region.")
+        
+        # Severity breakdown
+        if scored_alerts:
+            high_threat = sum(1 for a in scored_alerts if a.get('threat_score', {}).get('score', 0) >= 70)
+            medium_threat = sum(1 for a in scored_alerts if 40 <= a.get('threat_score', {}).get('score', 0) < 70)
+            
+            if high_threat > 0:
+                lines.append(f"{high_threat} high-priority alert{'s' if high_threat > 1 else ''} requiring immediate attention.")
+            elif medium_threat > 0:
+                lines.append(f"{medium_threat} moderate-priority alert{'s' if medium_threat > 1 else ''} across the area.")
+        
+        # Break down by state/area
+        al_alerts = [a for a in alerts if 'Alabama' in a.get('areaDesc', '')]
+        tn_alerts = [a for a in alerts if 'Tennessee' in a.get('areaDesc', '')]
+        
+        if al_alerts and tn_alerts:
+            lines.append(f"{len(al_alerts)} alert{'s' if len(al_alerts) != 1 else ''} in North Alabama, {len(tn_alerts)} in Southern Tennessee.")
+        elif al_alerts:
+            lines.append(f"All alerts are in North Alabama at this time.")
+        elif tn_alerts:
+            lines.append(f"All alerts are in Southern Tennessee at this time.")
+        
+        # Highlight top threats (top 2 for regional briefing)
+        if scored_alerts:
+            for i, alert in enumerate(scored_alerts[:2], 1):
+                event = alert.get('event', 'Weather Alert')
+                location = alert.get('areaDesc', 'the area')
+                # Simplify location to just counties
+                if ',' in location:
+                    location = location.split(';')[0]  # Get first county if multiple
+                lines.append(f"{event} in effect for {location}.")
+        
+        # Alert type summary
+        alert_types = {}
+        for alert in alerts:
+            event = alert.get('event', 'Alert')
+            event_type = event.split()[0]  # Get first word
+            alert_types[event_type] = alert_types.get(event_type, 0) + 1
+        
+        if alert_types:
+            top_types = sorted(alert_types.items(), key=lambda x: x[1], reverse=True)[:2]
+            type_parts = [f"{count} {type_name.lower()}" for type_name, count in top_types]
+            if len(type_parts) == 1:
+                lines.append(f"Primary concern: {type_parts[0]}.")
+            else:
+                lines.append(f"Primary concerns: {', '.join(type_parts)}.")
+        
+        # Closing - Regional focus
+        closings = [
+            "That's your regional weather update from NorthBamaWX. Stay weather aware.",
+            "We'll continue monitoring conditions across the region. Stay safe out there.",
+            "NorthBamaWX keeping you informed 24/7. More updates at the top and bottom of each hour.",
+            "Stay tuned for updates. This is NorthBamaWX, your regional weather intelligence.",
+        ]
+        lines.append(random.choice(closings))
+        
+        # Clean and return
         return commentary._clean_text(" ".join(lines))
     
     except Exception as e:

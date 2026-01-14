@@ -328,36 +328,20 @@ class SeverityScorer:
             return 'Stay aware - Low threat but watch for updates'
     
     def batch_score_alerts(self, alerts: list) -> list:
-        """Score multiple alerts at once with error handling"""
+        """Score multiple alerts at once"""
         scored_alerts = []
         
         for alert in alerts:
-            try:
-                score_data = self.calculate_threat_score(alert)
-                
-                # Add score data to alert
-                alert_with_score = alert.copy()
-                alert_with_score['threat_score'] = score_data
-                
-                scored_alerts.append(alert_with_score)
-            except Exception as e:
-                # Log error but continue processing other alerts
-                logger.warning(f"Failed to score alert {alert.get('event', 'Unknown')}: {e}")
-                # Add alert without score so it doesn't disappear
-                alert_with_score = alert.copy()
-                alert_with_score['threat_score'] = {
-                    'score': 50,  # Default medium score
-                    'threat_level': 'Moderate',
-                    'action': 'Monitor conditions',
-                    'factors': []
-                }
-                scored_alerts.append(alert_with_score)
+            score_data = self.calculate_threat_score(alert)
+            
+            # Add score data to alert
+            alert_with_score = alert.copy()
+            alert_with_score['threat_score'] = score_data
+            
+            scored_alerts.append(alert_with_score)
         
         # Sort by score (highest first)
-        try:
-            scored_alerts.sort(key=lambda x: x['threat_score']['score'], reverse=True)
-        except Exception as e:
-            logger.warning(f"Failed to sort alerts: {e}")
+        scored_alerts.sort(key=lambda x: x['threat_score']['score'], reverse=True)
         
         return scored_alerts
     
