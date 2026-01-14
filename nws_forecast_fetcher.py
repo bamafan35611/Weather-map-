@@ -461,49 +461,71 @@ def get_athens_current_conditions() -> Optional[Dict]:
 def get_athens_briefing_with_conditions() -> str:
     """
     Get Athens forecast with current temperature and wind speed included
-    This is the complete briefing for Athens WITH RETRY LOGIC
+    This is the complete briefing for Athens WITH RETRY LOGIC AND FALLBACK CITIES
     """
     import time
     
     fetcher = get_forecast_fetcher()
     
-    # Try up to 3 times
-    max_attempts = 3
+    # List of backup locations to try (Athens -> Huntsville -> Decatur -> Florence)
+    backup_locations = [
+        {'name': 'Athens', 'lat': 34.8029, 'lon': -86.9719},
+        {'name': 'Huntsville', 'lat': 34.7304, 'lon': -86.5861},
+        {'name': 'Decatur', 'lat': 34.6059, 'lon': -86.9833},
+        {'name': 'Florence', 'lat': 34.7998, 'lon': -87.6773}
+    ]
+    
     forecast_text = None
+    successful_city = None
     
-    for attempt in range(1, max_attempts + 1):
-        try:
-            print(f"  Athens forecast attempt {attempt}/{max_attempts}...")
-            # Get forecast
-            forecast_text = fetcher.get_athens_forecast_specifically()
-            
-            # Check if we got a real forecast (not error message)
-            if forecast_text and "temporarily unavailable" not in forecast_text.lower() and "incomplete" not in forecast_text.lower():
-                print(f"✓ Athens forecast retrieved successfully")
-                break
-            else:
-                print(f"⚠️ Athens forecast returned error message on attempt {attempt}")
-                forecast_text = None
+    # Try each location
+    for location in backup_locations:
+        city_name = location['name']
+        print(f"🎯 Trying {city_name} forecast...")
+        
+        # Try up to 2 times per city
+        for attempt in range(1, 3):
+            try:
+                print(f"  {city_name} attempt {attempt}/2...")
                 
-                if attempt < max_attempts:
-                    wait_time = attempt * 2  # 2, 4 seconds
-                    print(f"  Retrying in {wait_time} seconds...")
-                    time.sleep(wait_time)
-        except Exception as e:
-            print(f"⚠️ Error getting Athens forecast on attempt {attempt}: {e}")
-            forecast_text = None
-            
-            if attempt < max_attempts:
-                wait_time = attempt * 2
-                print(f"  Retrying in {wait_time} seconds...")
-                time.sleep(wait_time)
+                # Get forecast for this location
+                forecast_data = fetcher.get_forecast_for_location(location['lat'], location['lon'])
+                
+                if forecast_data and forecast_data.get('periods'):
+                    # Build forecast text from the data
+                    periods = forecast_data['periods'][:2]
+                    current = periods[0]
+                    
+                    name = current.get('name', 'Today')
+                    short_forecast = current.get('shortForecast', 'conditions unknown')
+                    temperature = current.get('temperature', 'unknown')
+                    
+                    if city_name == 'Athens':
+                        forecast_text = f"Athens, Alabama: {name}, {short_forecast}. High of {temperature} degrees."
+                    else:
+                        # Use nearby city but mention it's for the area
+                        forecast_text = f"Conditions for the Athens area from nearby {city_name}: {name}, {short_forecast}. High of {temperature} degrees."
+                    
+                    successful_city = city_name
+                    print(f"✓ {city_name} forecast retrieved successfully")
+                    break
+                    
+            except Exception as e:
+                print(f"⚠️ Error getting {city_name} forecast on attempt {attempt}: {e}")
+                
+                if attempt < 2:
+                    time.sleep(2)
+        
+        # If we got a forecast, stop trying other cities
+        if forecast_text:
+            break
     
-    # If all attempts failed, use a generic fallback
+    # If all cities failed, use a generic fallback
     if not forecast_text:
-        print("❌ All Athens forecast attempts failed, using fallback")
+        print("❌ All forecast locations failed (Athens, Huntsville, Decatur, Florence)")
         return "Quiet weather across North Alabama and Southern Tennessee at this time."
     
-    # Get current conditions
+    # Get current conditions for Athens
     conditions = None
     try:
         conditions = fetcher.get_athens_current_conditions()
@@ -520,18 +542,16 @@ def get_athens_briefing_with_conditions() -> str:
     if 'temperature' in conditions:
         conditions_parts.append(f"Current temperature is {conditions['temperature']} degrees")
     
-    # WIND DISABLED - NWS observation stations have unreliable wind sensors
-    # if 'wind_speed' in conditions and conditions['wind_speed'] > 0:
-    #     wind_dir = conditions.get('wind_direction', '')
-    #     wind_text = f"winds from the {wind_dir} at {conditions['wind_speed']} miles per hour"
-    #     if 'wind_gust' in conditions and conditions['wind_gust'] > conditions['wind_speed'] + 5:
-    #         wind_text += f" gusting to {conditions['wind_gust']}"
-    #     conditions_parts.append(wind_text)
-    
     if conditions_parts:
         # Add current conditions before the forecast
         conditions_text = ", ".join(conditions_parts) + ". "
-        return f"Athens, Alabama: {conditions_text}{forecast_text}"
+        
+        # If we used Athens directly, format normally
+        if successful_city == 'Athens':
+            return f"Athens, Alabama: {conditions_text}{forecast_text.split(': ', 1)[1]}"
+        else:
+            # If we used a backup city, keep the backup city mention
+            return f"{conditions_text}{forecast_text}"
     
     return forecast_text
 
