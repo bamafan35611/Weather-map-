@@ -6,6 +6,7 @@ Provides multiple ways to say the same thing for more natural broadcasts
 import random
 from datetime import datetime
 from typing import List, Dict, Optional
+import pytz
 
 class AnnouncementVariations:
     """Manages natural language variations for weather announcements"""
@@ -155,8 +156,9 @@ class AnnouncementVariations:
         ]
     
     def get_time_of_day(self) -> str:
-        """Get current time of day category"""
-        hour = datetime.now().hour
+        """Get current time of day category using Central Time"""
+        central = pytz.timezone('America/Chicago')
+        hour = datetime.now(central).hour
         
         if 0 <= hour < 6:
             return 'early_morning'
