@@ -188,7 +188,7 @@ class AmbientWeatherStation:
                 parts.append(f"very dry, humidity {humidity}%")
         
         if parts:
-            announcement = "Conditions from our local weather station: " + ", ".join(parts)
+            announcement = "Conditions from our local weather station: " + ", ".join(parts) + "."
             return announcement
         
         return None
