@@ -2224,7 +2224,8 @@ def api_broadcast_scheduled():
                     print(f"✓ Using NWS forecast for :30 broadcast")
                 except Exception as e:
                     print(f"⚠ Error getting NWS forecast: {e}")
-                    local_forecast_text = 'Athens, Alabama local forecast temporarily unavailable.'
+                    # Don't say "unavailable" - just skip it, AI will describe conditions
+                    local_forecast_text = None
             
             if local_forecast_text:
                 broadcast_data['content'].append({
@@ -2233,6 +2234,8 @@ def api_broadcast_scheduled():
                     'text': local_forecast_text,
                     'duration_estimate': '25-30 seconds'
                 })
+            else:
+                print("✓ Athens forecast unavailable - AI conditions will describe weather")
             
             # 🆕 LIGHTNING + CONDITIONS
             if LIGHTNING_DETECTOR_AVAILABLE:
