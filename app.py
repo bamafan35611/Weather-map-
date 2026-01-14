@@ -71,14 +71,16 @@ except ImportError as e:
     auto_retrain = None
 
 # Import new features: Pre-Alert Predictor and Severity Scorer
-try:
-    from pre_alert_predictor import PreAlertPredictor, get_pre_alert_predictions, verify_pre_alerts
-    PRE_ALERT_AVAILABLE = True
-    print("✓ Pre-alert prediction system loaded")
-except ImportError as e:
-    print(f"⚠ Pre-alert system not available: {e}")
-    PRE_ALERT_AVAILABLE = False
-    PreAlertPredictor = None
+# DISABLED - ML models are incompatible/corrupted
+# try:
+#     from pre_alert_predictor import PreAlertPredictor, get_pre_alert_predictions, verify_pre_alerts
+#     PRE_ALERT_AVAILABLE = True
+#     print("✓ Pre-alert prediction system loaded")
+# except ImportError as e:
+#     print(f"⚠ Pre-alert system not available: {e}")
+PRE_ALERT_AVAILABLE = False
+PreAlertPredictor = None
+print("ℹ️ Pre-alert ML system disabled (model compatibility issues)")
 
 try:
     from severity_scorer import SeverityScorer, score_alert, score_all_alerts, get_threat_announcement
@@ -427,13 +429,15 @@ except ImportError as e:
     get_personal_station_announcement = lambda: None
 
 # Import personal station ML predictions (Phase 7)
-try:
-    from personal_station_ml import get_severe_weather_prediction, correlate_alert_with_station
-    PERSONAL_ML_AVAILABLE = True
-    print("✓ Personal station ML predictions loaded")
-except ImportError as e:
-    print(f"⚠ Personal station ML not available: {e}")
-    PERSONAL_ML_AVAILABLE = False
+# DISABLED - ML models are incompatible/corrupted
+# try:
+#     from personal_station_ml import get_severe_weather_prediction, correlate_alert_with_station
+#     PERSONAL_ML_AVAILABLE = True
+#     print("✓ Personal station ML predictions loaded")
+# except ImportError as e:
+#     print(f"⚠ Personal station ML not available: {e}")
+PERSONAL_ML_AVAILABLE = False
+print("ℹ️ Personal station ML disabled (model compatibility issues)")
     get_severe_weather_prediction = lambda: None
     correlate_alert_with_station = lambda alert_type: None
 
