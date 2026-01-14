@@ -65,7 +65,19 @@ class SpotterNetwork:
             )
             response.raise_for_status()
             
-            data = response.json()
+            # Check if response is JSON before parsing
+            content_type = response.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                logger.warning(f"SpotterNetwork returned non-JSON response: {content_type}")
+                logger.warning(f"Response preview: {response.text[:200]}")
+                return []
+            
+            try:
+                data = response.json()
+            except ValueError as json_err:
+                logger.error(f"SpotterNetwork returned invalid JSON: {json_err}")
+                logger.error(f"Response preview: {response.text[:200]}")
+                return []
             
             # Parse and filter reports
             reports = self._parse_reports(data, hours_back)
@@ -74,6 +86,12 @@ class SpotterNetwork:
             
             return reports
             
+        except requests.exceptions.Timeout:
+            logger.warning("SpotterNetwork API timeout - service may be slow")
+            return []
+        except requests.exceptions.HTTPError as http_err:
+            logger.warning(f"SpotterNetwork HTTP error: {http_err.response.status_code}")
+            return []
         except Exception as e:
             logger.error(f"Error fetching SpotterNetwork reports: {e}")
             return []
