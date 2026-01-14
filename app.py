@@ -437,9 +437,9 @@ except ImportError as e:
 # except ImportError as e:
 #     print(f"⚠ Personal station ML not available: {e}")
 PERSONAL_ML_AVAILABLE = False
+get_severe_weather_prediction = lambda: None
+correlate_alert_with_station = lambda alert_type: None
 print("ℹ️ Personal station ML disabled (model compatibility issues)")
-    get_severe_weather_prediction = lambda: None
-    correlate_alert_with_station = lambda alert_type: None
 
 # Import radar storm tracker (Phase 8)
 try:
