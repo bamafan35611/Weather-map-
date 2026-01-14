@@ -1580,26 +1580,33 @@ def api_broadcast_scheduled():
         # :00 - Regional Briefing (North Alabama & Southern Tennessee) WITH HOLIDAY GREETINGS!
         # Accept 3-minute grace period: :00-:02
         if current_minute in [0, 1, 2]:
-            # Try to get regional briefing, with fallback
-            if COMMENTARY_AVAILABLE:
-                try:
-                    briefing = get_regional_briefing(alerts, scored)
-                except Exception as e:
-                    print(f"⚠️ Error getting regional briefing: {e}")
-                    briefing = "NorthBamaWX. Quiet weather across North Alabama and Southern Tennessee."
+            # Only generate regional briefing if there ARE alerts
+            # If no alerts, skip the briefing and let AI describe actual conditions below
+            if alerts and len(alerts) > 0:
+                # Try to get regional briefing, with fallback
+                if COMMENTARY_AVAILABLE:
+                    try:
+                        briefing = get_regional_briefing(alerts, scored)
+                    except Exception as e:
+                        print(f"⚠️ Error getting regional briefing: {e}")
+                        briefing = "NorthBamaWX monitoring active weather alerts."
+                else:
+                    briefing = "NorthBamaWX monitoring active weather alerts."
+                
+                # 🆕 ADD HOLIDAY GREETING IF APPLICABLE
+                if HOLIDAY_SYSTEM_AVAILABLE:
+                    briefing = add_holiday_greeting_to_broadcast(briefing, 'regional_briefing')
+                
+                broadcast_data['broadcast_type'] = 'regional_briefing'
+                broadcast_data['content'].append({
+                    'type': 'commentary',
+                    'text': briefing,
+                    'duration_estimate': '45-60 seconds'
+                })
             else:
-                briefing = "NorthBamaWX. Quiet weather across North Alabama and Southern Tennessee."
-            
-            # 🆕 ADD HOLIDAY GREETING IF APPLICABLE
-            if HOLIDAY_SYSTEM_AVAILABLE:
-                briefing = add_holiday_greeting_to_broadcast(briefing, 'regional_briefing')
-            
-            broadcast_data['broadcast_type'] = 'regional_briefing'
-            broadcast_data['content'].append({
-                'type': 'commentary',
-                'text': briefing,
-                'duration_estimate': '45-60 seconds'
-            })
+                # No alerts - skip regional briefing, AI will describe conditions
+                broadcast_data['broadcast_type'] = 'conditions_update'
+                print("✓ No alerts - skipping regional briefing, using AI conditions")
             
             # 🆕 PHASE 3: ADD STORM REPORTS (Recent severe weather events)
             if STORM_REPORTS_AVAILABLE:
