@@ -69,7 +69,7 @@ class LocalPredictor:
         print(f"🌍 Fetching alerts for {len(self.MONITORED_ZONES)} monitored zones...")
         
         try:
-            response = requests.get(url, headers={'Accept': 'application/geo+json'}, timeout=10)
+            response = requests.get(url, headers={'Accept': 'application/geo+json'}, timeout=7)
             response.raise_for_status()
             data = response.json()
             features = data.get('features', [])

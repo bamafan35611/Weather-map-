@@ -1516,13 +1516,30 @@ def api_broadcast_scheduled():
     
     try:
         # Try to fetch alerts (with fallback if predictor unavailable)
+        # IMPORTANT: Keep this fast - max 10 seconds total
         alerts = []
         scored = []
         
         if LOCAL_PREDICTOR_AVAILABLE:
             try:
-                predictor = LocalPredictor()
-                alerts = predictor.fetch_active_alerts()
+                import signal
+                
+                # Set a 10-second alarm for alert fetching
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("Alert fetch took too long")
+                
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(10)  # 10 second hard limit
+                
+                try:
+                    predictor = LocalPredictor()
+                    alerts = predictor.fetch_active_alerts()
+                finally:
+                    signal.alarm(0)  # Cancel alarm
+                    
+            except TimeoutError:
+                print(f"⏱️ Alert fetch timeout after 10 seconds - skipping alerts")
+                alerts = []
             except Exception as e:
                 print(f"⚠️ Error fetching alerts: {e}")
                 alerts = []
