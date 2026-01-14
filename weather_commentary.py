@@ -499,21 +499,22 @@ def get_regional_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
     Get REGIONAL briefing for North Alabama & Southern Tennessee only
     Replaces national briefing for regional monitoring
     """
-    commentary = WeatherCommentary()
-    
-    if not alerts:
-        return commentary._clean_text(commentary._generate_quiet_weather_commentary())
-    
-    lines = []
-    
-    # Opening - Regional focus
-    openings = [
-        "Good day everyone, this is NorthBamaWX with your regional weather update for North Alabama and Southern Tennessee.",
-        "NorthBamaWX here with conditions across North Alabama and Southern Tennessee.",
-        "Welcome to NorthBamaWX. Let's check weather conditions across our region.",
-        "This is NorthBamaWX, monitoring weather across North Alabama and Southern Tennessee.",
-    ]
-    lines.append(random.choice(openings))
+    try:
+        commentary = WeatherCommentary()
+        
+        if not alerts:
+            return commentary._clean_text(commentary._generate_quiet_weather_commentary())
+        
+        lines = []
+        
+        # Opening - Regional focus
+        openings = [
+            "Good day everyone, this is NorthBamaWX with your regional weather update for North Alabama and Southern Tennessee.",
+            "NorthBamaWX here with conditions across North Alabama and Southern Tennessee.",
+            "Welcome to NorthBamaWX. Let's check weather conditions across our region.",
+            "This is NorthBamaWX, monitoring weather across North Alabama and Southern Tennessee.",
+        ]
+        lines.append(random.choice(openings))
     
     # Alert count with type specification
     total = len(alerts)
@@ -580,7 +581,13 @@ def get_regional_briefing(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
     lines.append(random.choice(closings))
     
     # Clean and return
-    return commentary._clean_text(" ".join(lines))
+        return commentary._clean_text(" ".join(lines))
+    
+    except Exception as e:
+        print(f"⚠️ Error generating regional briefing: {e}")
+        import traceback
+        traceback.print_exc()
+        return "NorthBamaWX. Quiet weather across North Alabama and Southern Tennessee at this time."
 
 
 def get_hourly_update(alerts: List[Dict], scored_alerts: List[Dict], local_area: str = "North Alabama") -> str:
@@ -602,16 +609,23 @@ def get_hourly_update(alerts: List[Dict], scored_alerts: List[Dict], local_area:
 
 def get_weather_story(alerts: List[Dict], scored_alerts: List[Dict]) -> str:
     """Get weather story/narrative with environmental enhancements"""
-    commentary = WeatherCommentary()
-    base_story = commentary.generate_weather_story(alerts, scored_alerts)
+    try:
+        commentary = WeatherCommentary()
+        base_story = commentary.generate_weather_story(alerts, scored_alerts)
+        
+        # Clean up awkward NWS text
+        base_story = clean_nws_text(base_story)
+        
+        # Add environmental context
+        if ENHANCEMENTS_AVAILABLE:
+            return add_environmental_context(base_story, "weather_story")
+        return base_story
     
-    # Clean up awkward NWS text
-    base_story = clean_nws_text(base_story)
-    
-    # Add environmental context
-    if ENHANCEMENTS_AVAILABLE:
-        return add_environmental_context(base_story, "weather_story")
-    return base_story
+    except Exception as e:
+        print(f"⚠️ Error generating weather story: {e}")
+        import traceback
+        traceback.print_exc()
+        return "Taking advantage of the quiet weather today. Our automated monitoring continues across North Alabama."
 
 
 if __name__ == '__main__':

@@ -60,7 +60,7 @@ class LocalPredictor:
         print(f"   • Southern Tennessee: 6 zones (3 counties × 2 zone types)")
 
     def fetch_active_alerts(self):
-        """Fetch alerts ONLY for the monitored zones"""
+        """Fetch alerts ONLY for the monitored zones with retry logic"""
         
         # Build URL with zone filtering
         zone_params = '&'.join([f'zone={zone}' for zone in self.MONITORED_ZONES])
@@ -68,60 +68,92 @@ class LocalPredictor:
         
         print(f"🌍 Fetching alerts for {len(self.MONITORED_ZONES)} monitored zones...")
         
-        try:
-            response = requests.get(url, headers={'Accept': 'application/geo+json'}, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            features = data.get('features', [])
-            
-            print(f"✅ Retrieved {len(features)} alerts for monitored area")
-            
-            # Deduplicate alerts (same alert might appear in both county and forecast zones)
-            seen_ids = set()
-            alerts = []
-
-            for feature in features:
-                props = feature.get('properties', {})
-                geometry = feature.get('geometry', {})
+        # Try up to 3 times with exponential backoff
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                print(f"  Attempt {attempt}/{max_attempts}...")
+                response = requests.get(
+                    url, 
+                    headers={'Accept': 'application/geo+json'}, 
+                    timeout=15  # Increased from 10 to 15 seconds
+                )
+                response.raise_for_status()
+                data = response.json()
+                features = data.get('features', [])
                 
-                alert_id = props.get('id')
+                print(f"✅ Retrieved {len(features)} alerts for monitored area")
                 
-                # Skip duplicates
-                if alert_id in seen_ids:
-                    continue
-                seen_ids.add(alert_id)
+                # Deduplicate alerts (same alert might appear in both county and forecast zones)
+                seen_ids = set()
+                alerts = []
 
-                alert = {
-                    'id': alert_id,
-                    'event': props.get('event'),
-                    'severity': props.get('severity'),
-                    'urgency': props.get('urgency'),
-                    'certainty': props.get('certainty'),
-                    'areaDesc': props.get('areaDesc'),
-                    'onset': props.get('onset'),
-                    'expires': props.get('expires'),
-                    'description': props.get('description'),
-                    'instruction': props.get('instruction'),
-                    'geometry': geometry
-                }
+                for feature in features:
+                    props = feature.get('properties', {})
+                    geometry = feature.get('geometry', {})
+                    
+                    alert_id = props.get('id')
+                    
+                    # Skip duplicates
+                    if alert_id in seen_ids:
+                        continue
+                    seen_ids.add(alert_id)
 
-                event_name = alert['event'] or 'Unknown'
-                area = alert['areaDesc'] or 'Unknown'
-                print(f"  📍 {event_name} - {area}")
+                    alert = {
+                        'id': alert_id,
+                        'event': props.get('event'),
+                        'severity': props.get('severity'),
+                        'urgency': props.get('urgency'),
+                        'certainty': props.get('certainty'),
+                        'areaDesc': props.get('areaDesc'),
+                        'onset': props.get('onset'),
+                        'expires': props.get('expires'),
+                        'description': props.get('description'),
+                        'instruction': props.get('instruction'),
+                        'geometry': geometry
+                    }
 
-                alerts.append(alert)
+                    event_name = alert['event'] or 'Unknown'
+                    area = alert['areaDesc'] or 'Unknown'
+                    print(f"  📍 {event_name} - {area}")
 
-            if len(alerts) == 0:
-                print("✓ No active alerts in monitored counties")
-            else:
-                print(f"📊 Total unique alerts after deduplication: {len(alerts)}")
-            
-            return alerts
+                    alerts.append(alert)
 
-        except Exception as e:
-            print("⚠️ Error fetching alerts:", e)
-            traceback.print_exc()
-            return []
+                if len(alerts) == 0:
+                    print("✓ No active alerts in monitored counties")
+                else:
+                    print(f"📊 Total unique alerts after deduplication: {len(alerts)}")
+                
+                return alerts
+                
+            except requests.exceptions.Timeout:
+                print(f"⚠️ Timeout on attempt {attempt}/{max_attempts}")
+                if attempt < max_attempts:
+                    import time
+                    wait_time = attempt * 2  # 2, 4 seconds
+                    print(f"  Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    print("❌ All retry attempts failed - returning empty alerts")
+                    return []
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️ Network error on attempt {attempt}/{max_attempts}: {e}")
+                if attempt < max_attempts:
+                    import time
+                    wait_time = attempt * 2
+                    print(f"  Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    print("❌ All retry attempts failed - returning empty alerts")
+                    return []
+                    
+            except Exception as e:
+                print(f"⚠️ Unexpected error fetching alerts: {e}")
+                traceback.print_exc()
+                return []
+        
+        return []
 
 def generate_local_predictions():
     try:
