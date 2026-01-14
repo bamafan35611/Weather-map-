@@ -9,12 +9,15 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import os
 
-# Database path - Render persistent storage
-DB_PATH = os.getenv('SQLITE_DB_PATH', '/data/weather_learning.db')
+# Database path - Use /tmp for Render (ephemeral but works during session)
+# Note: Database will reset on Render restarts, but at least it will work
+DB_PATH = os.getenv('SQLITE_DB_PATH', '/tmp/weather_learning.db')
 
 # Fallback for local development
 if not os.path.exists(os.path.dirname(DB_PATH)) and os.path.dirname(DB_PATH):
     DB_PATH = 'weather_learning.db'  # Local fallback
+
+print(f"📊 Weather Learning Database: {DB_PATH}")
 
 def get_connection():
     """Get database connection with proper settings"""
@@ -499,3 +502,9 @@ if __name__ == '__main__':
     print("\n" + "=" * 70)
     print("✓ SQLite learning database is working!")
     print("=" * 70)
+
+# Initialize database on module load
+try:
+    init_database()
+except Exception as e:
+    print(f"❌ Failed to initialize forecast database: {e}")
