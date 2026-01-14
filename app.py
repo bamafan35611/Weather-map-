@@ -275,14 +275,16 @@ except ImportError as e:
     get_wind_announcement = lambda text: None
 
 # Import storm reports (Phase 2)
-try:
-    from storm_reports import get_storm_reports_summary
-    STORM_REPORTS_AVAILABLE = True
-    print("✓ Storm reports system loaded")
-except ImportError as e:
-    print(f"⚠ Storm reports not available: {e}")
-    STORM_REPORTS_AVAILABLE = False
-    get_storm_reports_summary = lambda **kwargs: None
+# DISABLED - SpotterNetwork API is unreliable and causes worker timeouts
+# try:
+#     from storm_reports import get_storm_reports_summary
+#     STORM_REPORTS_AVAILABLE = True
+#     print("✓ Storm reports system loaded")
+# except ImportError as e:
+#     print(f"⚠ Storm reports not available: {e}")
+STORM_REPORTS_AVAILABLE = False
+get_storm_reports_summary = lambda **kwargs: None
+print("ℹ️ Storm reports disabled (SpotterNetwork API unreliable)")
 
 # Import air quality index (Phase 2)
 try:
