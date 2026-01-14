@@ -461,15 +461,54 @@ def get_athens_current_conditions() -> Optional[Dict]:
 def get_athens_briefing_with_conditions() -> str:
     """
     Get Athens forecast with current temperature and wind speed included
-    This is the complete briefing for Athens
+    This is the complete briefing for Athens WITH RETRY LOGIC
     """
+    import time
+    
     fetcher = get_forecast_fetcher()
     
-    # Get forecast
-    forecast_text = fetcher.get_athens_forecast_specifically()
+    # Try up to 3 times
+    max_attempts = 3
+    forecast_text = None
+    
+    for attempt in range(1, max_attempts + 1):
+        try:
+            print(f"  Athens forecast attempt {attempt}/{max_attempts}...")
+            # Get forecast
+            forecast_text = fetcher.get_athens_forecast_specifically()
+            
+            # Check if we got a real forecast (not error message)
+            if forecast_text and "temporarily unavailable" not in forecast_text.lower() and "incomplete" not in forecast_text.lower():
+                print(f"✓ Athens forecast retrieved successfully")
+                break
+            else:
+                print(f"⚠️ Athens forecast returned error message on attempt {attempt}")
+                forecast_text = None
+                
+                if attempt < max_attempts:
+                    wait_time = attempt * 2  # 2, 4 seconds
+                    print(f"  Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+        except Exception as e:
+            print(f"⚠️ Error getting Athens forecast on attempt {attempt}: {e}")
+            forecast_text = None
+            
+            if attempt < max_attempts:
+                wait_time = attempt * 2
+                print(f"  Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+    
+    # If all attempts failed, use a generic fallback
+    if not forecast_text:
+        print("❌ All Athens forecast attempts failed, using fallback")
+        return "Quiet weather across North Alabama and Southern Tennessee at this time."
     
     # Get current conditions
-    conditions = fetcher.get_athens_current_conditions()
+    conditions = None
+    try:
+        conditions = fetcher.get_athens_current_conditions()
+    except Exception as e:
+        print(f"⚠️ Could not get Athens current conditions: {e}")
     
     if not conditions:
         # If we can't get current conditions, just return the forecast
