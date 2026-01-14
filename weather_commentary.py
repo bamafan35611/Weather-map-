@@ -422,8 +422,28 @@ class WeatherCommentary:
         has_wind = any('wind' in a.get('event', '').lower() for a in alerts)
         has_winter = any('snow' in a.get('event', '').lower() or 'winter' in a.get('event', '').lower() for a in alerts)
         
+        # Get current season for appropriate phrasing
+        from datetime import datetime
+        import pytz
+        central = pytz.timezone('America/Chicago')
+        current_month = datetime.now(central).month
+        
+        # Determine season: 12,1,2=winter, 3,4,5=spring, 6,7,8=summer, 9,10,11=fall
+        if current_month in [12, 1, 2]:
+            season = "winter"
+        elif current_month in [3, 4, 5]:
+            season = "spring"
+        elif current_month in [6, 7, 8]:
+            season = "summer"
+        else:
+            season = "fall"
+        
         if has_severe and has_flood:
-            return "We're seeing a classic spring severe weather setup with both thunderstorms and flooding concerns."
+            # Don't say "spring" in January!
+            if season == "spring":
+                return "We're seeing a classic spring severe weather setup with both thunderstorms and flooding concerns."
+            else:
+                return "We're seeing a severe weather setup with both thunderstorms and flooding concerns."
         elif has_wind and len(alerts) >= 5:
             return "A strong wind event is the main story today with impacts across multiple states."
         elif has_winter:
