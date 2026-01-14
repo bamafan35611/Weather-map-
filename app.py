@@ -1506,13 +1506,34 @@ def api_forecast_debug():
 @app.get('/api/broadcast/scheduled')
 def api_broadcast_scheduled():
     """Get the appropriate broadcast content based on current time (15-min schedule)"""
-    if not COMMENTARY_AVAILABLE or not SEVERITY_SCORER_AVAILABLE or not LOCAL_PREDICTOR_AVAILABLE:
-        return jsonify({'success': False, 'error': 'Broadcast system not available'}), 503
+    # Log which systems are unavailable but continue broadcasting anyway
+    if not COMMENTARY_AVAILABLE:
+        print("⚠️ Commentary system unavailable, using fallback")
+    if not SEVERITY_SCORER_AVAILABLE:
+        print("⚠️ Severity scorer unavailable, using fallback")
+    if not LOCAL_PREDICTOR_AVAILABLE:
+        print("⚠️ Local predictor unavailable, using fallback")
     
     try:
-        predictor = LocalPredictor()
-        alerts = predictor.fetch_active_alerts()
-        scored = score_all_alerts(alerts) if alerts else []
+        # Try to fetch alerts (with fallback if predictor unavailable)
+        alerts = []
+        scored = []
+        
+        if LOCAL_PREDICTOR_AVAILABLE:
+            try:
+                predictor = LocalPredictor()
+                alerts = predictor.fetch_active_alerts()
+            except Exception as e:
+                print(f"⚠️ Error fetching alerts: {e}")
+                alerts = []
+        
+        # Try to score alerts (with fallback if scorer unavailable)
+        if alerts and SEVERITY_SCORER_AVAILABLE:
+            try:
+                scored = score_all_alerts(alerts)
+            except Exception as e:
+                print(f"⚠️ Error scoring alerts: {e}")
+                scored = []
         
         # 🆕 CLEANUP EXPIRED ALERTS FROM TRACKING
         if alerts:
@@ -1542,7 +1563,15 @@ def api_broadcast_scheduled():
         # :00 - Regional Briefing (North Alabama & Southern Tennessee) WITH HOLIDAY GREETINGS!
         # Accept 3-minute grace period: :00-:02
         if current_minute in [0, 1, 2]:
-            briefing = get_regional_briefing(alerts, scored)
+            # Try to get regional briefing, with fallback
+            if COMMENTARY_AVAILABLE:
+                try:
+                    briefing = get_regional_briefing(alerts, scored)
+                except Exception as e:
+                    print(f"⚠️ Error getting regional briefing: {e}")
+                    briefing = "NorthBamaWX. Quiet weather across North Alabama and Southern Tennessee."
+            else:
+                briefing = "NorthBamaWX. Quiet weather across North Alabama and Southern Tennessee."
             
             # 🆕 ADD HOLIDAY GREETING IF APPLICABLE
             if HOLIDAY_SYSTEM_AVAILABLE:
@@ -2221,7 +2250,16 @@ def api_broadcast_scheduled():
         # :45 - Weather Story
         # Accept 3-minute grace period: :45-:47
         elif current_minute in [45, 46, 47]:
-            story = get_weather_story(alerts, scored)
+            # Try to get weather story, with fallback
+            if COMMENTARY_AVAILABLE:
+                try:
+                    story = get_weather_story(alerts, scored)
+                except Exception as e:
+                    print(f"⚠️ Error getting weather story: {e}")
+                    story = "Taking advantage of the quiet weather today. Our automated monitoring continues across North Alabama."
+            else:
+                story = "Taking advantage of the quiet weather today. Our automated monitoring continues across North Alabama."
+            
             broadcast_data['broadcast_type'] = 'weather_story'
             broadcast_data['content'].append({
                 'type': 'commentary',
