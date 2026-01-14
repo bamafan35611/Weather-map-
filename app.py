@@ -2208,12 +2208,29 @@ def api_broadcast_scheduled():
                     personal_conditions = get_personal_station_announcement()
                     if personal_conditions:
                         # Get Athens forecast (without current conditions)
+                        forecast_only = None
                         if FORECAST_FETCHER_AVAILABLE:
-                            from nws_forecast_fetcher import get_forecast_fetcher
-                            fetcher = get_forecast_fetcher()
-                            forecast_only = fetcher.get_athens_forecast_specifically()
+                            try:
+                                from nws_forecast_fetcher import get_forecast_fetcher
+                                fetcher = get_forecast_fetcher()
+                                forecast_only = fetcher.get_athens_forecast_specifically()
+                                
+                                # Check if it's an error message
+                                if "temporarily unavailable" in forecast_only or "incomplete" in forecast_only:
+                                    print(f"⚠️ Athens forecast unavailable, using just current conditions")
+                                    forecast_only = None
+                            except Exception as e:
+                                print(f"⚠️ Error getting Athens forecast: {e}")
+                                forecast_only = None
+                        
+                        # Build the announcement
+                        if forecast_only:
                             local_forecast_text = f"Athens, Alabama: {personal_conditions}. {forecast_only}"
-                            print(f"✓ Using personal weather station for :30 broadcast")
+                        else:
+                            # Just use current conditions without forecast
+                            local_forecast_text = f"Athens, Alabama: {personal_conditions}"
+                        
+                        print(f"✓ Using personal weather station for :30 broadcast")
                     else:
                         print(f"⚠ Personal station returned no data, falling back to NWS")
                 except Exception as e:
