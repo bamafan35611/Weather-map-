@@ -2335,7 +2335,14 @@ def api_broadcast_scheduled():
         if broadcast_data['content']:
             combined_text = " ".join([block.get('text', '') for block in broadcast_data['content'] if block.get('text')])
             broadcast_data['combined_text'] = combined_text
-            print(f"✓ Combined {len(broadcast_data['content'])} content blocks into single text")
+            
+            # 📢 LOG THE ACTUAL BROADCAST TEXT
+            print("=" * 80)
+            print(f"📢 BROADCAST TEXT FOR :{current_minute:02d} ({broadcast_data['broadcast_type']})")
+            print("=" * 80)
+            print(combined_text)
+            print("=" * 80)
+            print(f"✓ Combined {len(broadcast_data['content'])} content blocks | {len(combined_text)} characters")
         
         return jsonify(broadcast_data)
     
