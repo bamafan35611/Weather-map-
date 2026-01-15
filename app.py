@@ -2246,7 +2246,9 @@ def _generate_broadcast():
                         
                         # Build the announcement
                         if forecast_only:
-                            local_forecast_text = f"Athens, Alabama: {personal_conditions}. {forecast_only}"
+                            # Remove trailing period from personal_conditions to avoid double period
+                            conditions_text = personal_conditions.rstrip('.')
+                            local_forecast_text = f"Athens, Alabama: {conditions_text}. {forecast_only}"
                         else:
                             # Just use current conditions without forecast
                             local_forecast_text = f"Athens, Alabama: {personal_conditions}"
