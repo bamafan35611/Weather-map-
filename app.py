@@ -71,16 +71,14 @@ except ImportError as e:
     auto_retrain = None
 
 # Import new features: Pre-Alert Predictor and Severity Scorer
-# DISABLED - ML models are incompatible/corrupted
-# try:
-#     from pre_alert_predictor import PreAlertPredictor, get_pre_alert_predictions, verify_pre_alerts
-#     PRE_ALERT_AVAILABLE = True
-#     print("✓ Pre-alert prediction system loaded")
-# except ImportError as e:
-#     print(f"⚠ Pre-alert system not available: {e}")
-PRE_ALERT_AVAILABLE = False
-PreAlertPredictor = None
-print("ℹ️ Pre-alert ML system disabled (model compatibility issues)")
+try:
+    from pre_alert_predictor import PreAlertPredictor, get_pre_alert_predictions, verify_pre_alerts
+    PRE_ALERT_AVAILABLE = True
+    print("✓ Pre-alert prediction system loaded")
+except ImportError as e:
+    print(f"⚠ Pre-alert system not available: {e}")
+    PRE_ALERT_AVAILABLE = False
+    PreAlertPredictor = None
 
 try:
     from severity_scorer import SeverityScorer, score_alert, score_all_alerts, get_threat_announcement
@@ -102,14 +100,10 @@ except ImportError as e:
     VoiceStyleManager = None
 
 # Import social media poster
-try:
-    from social_media_poster import SocialMediaPoster, post_alert_to_social_media, post_pre_alert_to_social_media, post_stats_to_social_media
-    SOCIAL_MEDIA_AVAILABLE = True
-    print("✓ Social media poster loaded")
-except ImportError as e:
-    print(f"⚠ Social media poster not available: {e}")
-    SOCIAL_MEDIA_AVAILABLE = False
-    SocialMediaPoster = None
+# DISABLED - User preference to reduce memory
+SOCIAL_MEDIA_AVAILABLE = False
+SocialMediaPoster = None
+print("ℹ️ Social media disabled (memory optimization)")
 
 # Import weather commentary system
 try:
@@ -287,14 +281,10 @@ get_storm_reports_summary = lambda **kwargs: None
 print("ℹ️ Storm reports disabled (SpotterNetwork API unreliable)")
 
 # Import air quality index (Phase 2)
-try:
-    from air_quality import get_aqi_announcement
-    AIR_QUALITY_AVAILABLE = True
-    print("✓ Air quality monitoring loaded")
-except ImportError as e:
-    print(f"⚠ Air quality not available: {e}")
-    AIR_QUALITY_AVAILABLE = False
-    get_aqi_announcement = lambda **kwargs: None
+# DISABLED - User preference to reduce memory
+AIR_QUALITY_AVAILABLE = False
+get_aqi_announcement = lambda **kwargs: None
+print("ℹ️ Air quality disabled (memory optimization)")
 
 # Import current conditions monitor
 try:
@@ -324,6 +314,7 @@ try:
 except ImportError as e:
     LIGHTNING_DETECTOR_AVAILABLE = False
     get_lightning_announcement = lambda: None
+    print(f"⚠ Lightning detector not available: {e}")
 
 # Import impact predictor (Phase 3)
 try:
@@ -1512,6 +1503,36 @@ def api_forecast_debug():
 @app.get('/api/broadcast/scheduled')
 def api_broadcast_scheduled():
     """Get the appropriate broadcast content based on current time (15-min schedule)"""
+    import signal
+    
+    # CRITICAL: 20-second hard timeout for entire endpoint to prevent worker kills
+    def endpoint_timeout_handler(signum, frame):
+        raise TimeoutError("Broadcast endpoint exceeded 20 seconds")
+    
+    signal.signal(signal.SIGALRM, endpoint_timeout_handler)
+    signal.alarm(20)  # 20 second hard limit for everything
+    
+    try:
+        return _generate_broadcast()
+    except TimeoutError as e:
+        print(f"❌ BROADCAST TIMEOUT: {e}")
+        # Return minimal fallback broadcast
+        return jsonify({
+            'success': True,
+            'broadcast_type': 'emergency_fallback',
+            'content': [{
+                'type': 'fallback',
+                'text': 'NorthBamaWX. All systems operational.',
+                'duration_estimate': '5 seconds'
+            }],
+            'combined_text': 'NorthBamaWX. All systems operational.',
+            'timestamp': get_current_time().isoformat()
+        })
+    finally:
+        signal.alarm(0)  # Cancel timeout
+
+def _generate_broadcast():
+    """Internal function that generates the broadcast"""
     # Log which systems are unavailable but continue broadcasting anyway
     if not COMMENTARY_AVAILABLE:
         print("⚠️ Commentary system unavailable, using fallback")
