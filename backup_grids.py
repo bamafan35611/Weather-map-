@@ -89,13 +89,29 @@ class BackupGridSystem:
                 
                 result = fetch_function(lat, lon, city, state, *args, **kwargs)
                 
-                # Check if result indicates failure
-                if result and "unavailable" not in result.lower() and "error" not in result.lower():
-                    if i > 0:
-                        print(f"✅ Success with backup grid: {city}, {state}")
+                # Check if result is valid
+                # Result can be either a string (error message) or dict (forecast data)
+                if result:
+                    if isinstance(result, dict):
+                        # Dictionary means successful forecast fetch
+                        if i > 0:
+                            print(f"✅ Success with backup grid: {city}, {state}")
+                        else:
+                            print(f"✅ Success with primary grid: {city}, {state}")
+                        return result
+                    elif isinstance(result, str):
+                        # String - check if it's an error message
+                        result_lower = result.lower()
+                        if "unavailable" not in result_lower and "error" not in result_lower:
+                            if i > 0:
+                                print(f"✅ Success with backup grid: {city}, {state}")
+                            else:
+                                print(f"✅ Success with primary grid: {city}, {state}")
+                            return result
+                        else:
+                            print(f"⚠️ Grid failed: {city}, {state}")
                     else:
-                        print(f"✅ Success with primary grid: {city}, {state}")
-                    return result
+                        print(f"⚠️ Grid returned unexpected type: {type(result)}")
                 else:
                     print(f"⚠️ Grid failed: {city}, {state}")
             
