@@ -119,7 +119,9 @@ TONE: Professional meteorologist, calm, informative, slightly conversational"""
         from datetime import datetime
         import pytz
         central = pytz.timezone('America/Chicago')
-        current_month = datetime.now(central).month
+        now = datetime.now(central)
+        current_month = now.month
+        current_hour = now.hour
         
         if current_month in [12, 1, 2]:
             season = "winter"
@@ -130,7 +132,18 @@ TONE: Professional meteorologist, calm, informative, slightly conversational"""
         else:
             season = "fall"
         
+        # Determine time of day
+        if 5 <= current_hour < 12:
+            time_of_day = "morning"
+        elif 12 <= current_hour < 17:
+            time_of_day = "afternoon"
+        elif 17 <= current_hour < 21:
+            time_of_day = "evening"
+        else:
+            time_of_day = "night"
+        
         parts.append(f"Current season: {season}")
+        parts.append(f"Time of day: {time_of_day}")
         
         # Time context
         time_period = weather_data.get('time_period', 'this hour')
@@ -155,7 +168,7 @@ TONE: Professional meteorologist, calm, informative, slightly conversational"""
         parts.append("Alert status: No active warnings or watches")
         
         prompt = "\n".join(parts)
-        prompt += "\n\nGenerate a natural weather broadcast announcement based on this information. Be concise and varied in your phrasing. IMPORTANT: Use the correct season provided above - do NOT mention the wrong season!"
+        prompt += "\n\nGenerate a natural weather broadcast announcement based on this information. Be concise and varied in your phrasing. IMPORTANT: Use the correct season AND time of day provided above - if it's morning, say 'morning' or 'today', NOT 'tonight' or 'evening'!"
         
         return prompt
     
