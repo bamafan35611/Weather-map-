@@ -409,6 +409,7 @@ class NWSForecastFetcher:
         name = current.get('name', 'Today')
         short_forecast = current.get('shortForecast', 'conditions unknown')
         temperature = current.get('temperature', 'unknown')
+        is_daytime = current.get('isDaytime', True)
         
         # Ensure values are proper types
         if not isinstance(name, str):
@@ -417,7 +418,10 @@ class NWSForecastFetcher:
             short_forecast = 'conditions unknown'
         
         summary = f"Athens, Alabama: {name}, {short_forecast}. "
-        summary += f"High of {temperature} degrees. "
+        
+        # Use "High" for daytime, "Low" for nighttime
+        temp_label = "High" if is_daytime else "Low"
+        summary += f"{temp_label} of {temperature} degrees. "
         
         # Check if severe weather mentioned (with error handling)
         try:
