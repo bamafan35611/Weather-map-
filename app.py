@@ -2096,6 +2096,8 @@ def _generate_broadcast():
                 if RADAR_TRACKER_AVAILABLE:
                     approaching_storm = get_approaching_storm_announcement()
                 
+                city_briefing_added = False
+                
                 if approaching_storm:
                     # Storms approaching - announce them
                     broadcast_data['content'].append({
@@ -2147,6 +2149,7 @@ def _generate_broadcast():
                                     'duration_estimate': '15-20 seconds'
                                 })
                                 print(f"✓ Random city briefing added: {random_city['name']}, {random_city['state']}")
+                                city_briefing_added = True
                                 break
                         except Exception as e:
                             print(f"⚠️ Error with {random_city['name']}: {e}")
@@ -2162,7 +2165,8 @@ def _generate_broadcast():
                     broadcast_data['content'].append({'type': 'lightning_activity', 'text': lightning, 'voice_style': 'urgent', 'duration_estimate': '15-20 seconds'})
                     print(f"✓ Added lightning to :15")
             
-            if CURRENT_CONDITIONS_AVAILABLE:
+            # Only add AI conditions if we didn't already add a city briefing
+            if not city_briefing_added and CURRENT_CONDITIONS_AVAILABLE:
                 conditions = get_current_conditions_announcement()
                 
                 # 🤖 ALWAYS USE AI BROADCASTER (even for "all clear" messages)
